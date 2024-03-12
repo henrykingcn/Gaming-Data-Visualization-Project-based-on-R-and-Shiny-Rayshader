@@ -3,7 +3,7 @@
 
 ## Author Information
 
-- **Name:** WANG Hanlin, Zhong Hailin, Ye Yujun, Zhang Meiyi
+- **Name:** Henry, Adon, Tina, Dreama
 - **Department:** Data Science
 - **Course:** Introduction to Data Visualization
 - **Environment for Game_Vis.Rmd:** macOS 12.7.1; Apple M1. 
