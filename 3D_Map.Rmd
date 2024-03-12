@@ -1,0 +1,286 @@
+---
+title: "Games Visualization" 
+# author: "WANG Hanlin"
+# date: "Dec 8th, 2023"
+output: 
+  flexdashboard::flex_dashboard:
+    source_code: embed
+    vertical_layout: scroll
+    theme: yeti
+---
+
+
+```{js}
+// Inverse color of navigation bar.
+$('.navbar-inverse').removeClass('navbar-inverse').addClass('navbar-default');
+```
+
+```{r setup, include=FALSE}
+# Load necessary packages. 
+library(flexdashboard) # Dashboard package
+library(highcharter) # Interactive data visualizations
+library(plotly) # Interactive data visualizations
+library(viridis) # Color gradients
+library(tidyverse) # Metapackge
+library(countrycode) # Converts country names/codes
+library(rjson) # JSON reader
+library(crosstalk) # Provides interactivity for HTML widgets
+library(DT) # Displaying data tables
+```
+
+
+# Map
+
+## Column {.tabset .tabset-fade .colored data-width="625"}
+
+### Count of Languages of Counrties {.no-title .no-padding .colored}
+
+```{r}
+
+# Load necessary library
+library(tidyverse)
+
+# Read the CSV file
+steam_data <- read.csv("steam_data.csv", stringsAsFactors = FALSE)
+
+# Assuming 'Supported Languages' contains comma-separated language names
+# and is named 'Supported_Languages' in the dataframe
+language_counts <- steam_data %>%
+  # Pull the column of interest into a vector
+  pull(Supported.Languages) %>%
+  # Split each string into individual languages
+  strsplit(split = ",") %>%
+  # Unlist into a single vector
+  unlist() %>%
+  # Trim whitespace
+  trimws() %>%
+  gsub(pattern = "\\['|'\\]|'", replacement = "") %>%
+  # Create a table of counts
+  table()
+
+# Sort the language counts in descending order
+sorted_language_counts <- sort(language_counts, decreasing = TRUE)
+
+library(ggplot2)
+library(rnaturalearth)
+library(dplyr)
+
+# Country-language mapping
+language_country_map <- list(
+  'English' = c('United States', 'United Kingdom', 'Canada', 'Australia'),
+  'French' = c('France', 'Canada', 'Belgium', 'Switzerland'),
+  'German' = c('Germany', 'Austria', 'Switzerland'),
+  'Spanish - Spain' = c('Spain'),
+  'Russian' = c('Russia'),
+  'Simplified Chinese' = c('China'),
+  'Polish' = c('Poland'),
+  'Turkish' = c('Turkey'),
+  'Portuguese - Brazil' = c('Brazil'),
+  'Italian' = c('Italy'),
+  'Spanish - Latin America' = c(
+  'Argentina', 'Bolivia', 'Chile', 'Colombia', 'Costa Rica', 'Cuba',
+  'Dominican Republic', 'Ecuador', 'El Salvador', 'Guatemala', 'Honduras',
+  'Mexico', 'Nicaragua', 'Panama', 'Paraguay', 'Peru', 'Puerto Rico',
+  'Spain (Canary Islands)', 'Uruguay', 'Venezuela', 'Various other Latin American countries'
+),
+  'Traditional Chinese' = c('Taiwan', 'Hong Kong', 'China'),
+  'Ukrainian' = c('Ukraine'),
+  'Czech' = c('Czech Republic'),
+  'Danish' = c('Denmark'),
+  'Dutch' = c('Netherlands'),
+  'Finnish' = c('Finland'),
+  'Hungarian' = c('Hungary'),
+  'Japanese' = c('Japan'),
+  'Norwegian' = c('Norway'),
+  'Portuguese - Portugal' = c('Portugal'),
+  'Romanian' = c('Romania'),
+  'Swedish' = c('Sweden'),
+  'Thai' = c('Thailand'),
+  'Bulgarian' = c('Bulgaria'),
+  'Greek' = c('Greece'),
+  'Vietnamese' = c('Vietnam'),
+  'Belarusian' = c('Belarus'),
+  'Estonian' = c('Estonia'),
+  'Macedonian' = c('North Macedonia'),
+  'Serbian' = c('Serbia'),
+  'Slovak' = c('Slovakia'),
+  'Catalan' = c('Catalonia'),
+  'Croatian' = c('Croatia'),
+  'Indonesian' = c('Indonesia'),
+  'Latvian' = c('Latvia'),
+  'Lithuanian' = c('Lithuania'),
+  'Hindi' = c('India'),
+  'Malay' = c('Malaysia'),
+  'Kazakh' = c('Kazakhstan'),
+  'Georgian' = c('Georgia'),
+  'Filipino' = c('Philippines'),
+  'Afrikaans' = c('South Africa'),
+  'Basque' = c('Basque Country'),
+  'Hebrew' = c('Israel'),
+  'Persian' = c('Iran'),
+  'Azerbaijani' = c('Azerbaijan'),
+  'Irish' = c('Ireland'),
+  'Welsh' = c('Wales'),
+  'Galician' = c('Galicia'),
+  'Mongolian' = c('Mongolia'),
+  'Albanian' = c('Albania'),
+  'Amharic' = c('Ethiopia'),
+  'Armenian' = c('Armenia'),
+  'Assamese' = c('Assam, India'),
+  'Bangla' = c('Bangladesh'),
+  'Bosnian' = c('Bosnia and Herzegovina'),
+  'Cherokee' = c('Cherokee Nation'),
+  'Dari' = c('Afghanistan'),
+  '"Kiche"' = c('Various Indigenous communities'),
+  'Kannada' = c('Karnataka, India'),
+  'Khmer' = c('Cambodia'),
+  'Kinyarwanda' = c('Rwanda'),
+  'Konkani' = c('Goa, India'),
+  'Korean' = c('Korea'),
+  'Kyrgyz' = c('Kyrgyzstan'),
+  'Luxembourgish' = c('Luxembourg'),
+  'Malayalam' = c('Kerala, India'),
+  'Maltese' = c('Malta'),
+  'Maori' = c('New Zealand'),
+  'Marathi' = c('Maharashtra, India'),
+  'Nepali' = c('Nepal'),
+  'Odia' = c('Odisha, India'),
+  'Punjabi (Gurmukhi)' = c('Punjab, India'),
+  'Punjabi (Shahmukhi)' = c('Punjab, Pakistan'),
+  'Quechua' = c('Various Andean countries'),
+  'Scots' = c('Scotland'),
+  'Sindhi' = c('Sindh, Pakistan'),
+  'Sinhala' = c('Sri Lanka'),
+  'Slovenian' = c('Slovenia'),
+  'Sorani' = c('Kurdistan Region'),
+  'Sotho' = c('Lesotho'),
+  'Swahili' = c(
+  'Kenya', 'Tanzania', 'Uganda', 'Rwanda', 'Burundi', 'Democratic Republic of the Congo', 
+  'Comoros', 'Mayotte', 'Mozambique', 'Oman', 'Somalia', 'South Sudan', 'Zambia'
+),
+  'Tajik' = c('Tajikistan'),
+  'Tamil' = c('Tamil Nadu, India'),
+  'Tatar' = c('Tatarstan'),
+  'Telugu' = c('Andhra Pradesh, India'),
+  'Tigrinya' = c('Eritrea'),
+  'Tswana' = c('Botswana'),
+  'Turkmen' = c('Turkmenistan'),
+  'Urdu' = c('Pakistan'),
+  'Uyghur' = c('Xinjiang, China'),
+  'Uzbek' = c('Uzbekistan'),
+  'Valencian' = c('Valencia, Spain'),
+  'Wolof' = c('Senegal'),
+  'Xhosa' = c('South Africa'),
+  'Yoruba' = c('Nigeria'),
+  'Zulu' = c('South Africa'),
+  'Arabic' = c('Algeria', 'Bahrain', 'Comoros', 'Djibouti', 'Egypt', 'Iraq',
+  'Jordan', 'Kuwait', 'Lebanon', 'Libya', 'Mauritania', 'Morocco',
+  'Oman', 'Palestine', 'Qatar', 'Saudi Arabia', 'Somalia', 'Sudan',
+  'Syria', 'Tunisia', 'United Arab Emirates', 'Yemen')
+)
+
+
+
+# Get world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Initialize a dataframe to store the number of languages per country
+country_language_counts <- data.frame(
+  country = world$name,
+  languages = 0
+)
+
+# Increment the count for each country based on the language_country_map
+for(language in names(language_country_map)) {
+  countries <- language_country_map[[language]]
+  country_language_counts$languages[country_language_counts$country %in% countries] <- country_language_counts$languages[country_language_counts$country %in% countries] + 1
+}
+
+# Merge this info with the world map data
+world <- left_join(world, country_language_counts, by = c("name" = "country"))
+
+# Plotting the map
+p<-ggplot(data = world) +
+  geom_sf(aes(fill = languages), color = NA) + 
+  scale_fill_gradient(low = "lightblue", high = "darkblue", na.value = "grey50", name = "Number of Languages") +
+  theme_void()  # To remove axis and background
+
+plotly_map <- ggplotly(p)
+
+# 显示 plotly 地图
+plotly_map
+
+```
+
+### Count of Languages of Counrties {.no-title .no-padding .colored}
+
+```{r}
+
+country_game_counts <- data.frame(country = unlist(language_country_map), game_count = 0)
+
+# 计算每个国家支持的游戏总数
+for (language in names(language_country_map)) {
+  countries <- language_country_map[[language]]
+  count <- sorted_language_counts[language]
+  country_game_counts$game_count[country_game_counts$country %in% countries] <- country_game_counts$game_count[country_game_counts$country %in% countries] + count
+}
+
+# 获取世界地图数据
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# 合并游戏计数和世界地图数据
+world_with_game_counts <- left_join(world, country_game_counts, by = c("name" = "country"))
+
+country_game_counts$language <- sapply(country_game_counts$country, function(country) {
+  paste(names(which(sapply(language_country_map, function(x) country %in% x))), collapse = ", ")
+})
+
+# 获取世界地图数据
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# 合并游戏计数和世界地图数据
+world_with_game_counts <- left_join(world, country_game_counts, by = c("name" = "country"))
+
+# 使用 ggplot 创建基础地图
+gg_map <- ggplot(data = world_with_game_counts) +
+  geom_sf(aes(fill = game_count, text = paste("Country/Region:", name, "<br>Games:", game_count, "<br>Languages:", language)), color = NA) +
+  scale_fill_gradient(low = "lightgreen", high = "darkred", na.value = "grey50", name = "Total Game Count") +
+  theme_void()  # 移除轴和背景
+
+# 将 ggplot 地图转换为 plotly 对象
+plotly_map <- ggplotly(gg_map, tooltip = "text")
+
+# 显示 plotly 地图
+plotly_map
+
+
+```
+
+
+
+### Count of Languages of Counrties {.no-title .no-padding .colored}
+```{r}
+library(rayshader)
+library(ggplot2)
+library(plotly)
+library(rnaturalearth)
+
+# Convert ggplot object to a rayshader plot
+height_data <- matrix(runif(100), nrow = 10)
+
+# 将ggplot2地图转换为rayshader图形，添加coord_sf()来兼容geom_sf()
+rayshader_map <- gg_map + theme_void() + coord_sf()
+
+# 使用plot_gg()将ggplot转换为3D图形
+plot <- plot_gg(rayshader_map, width = 5, height = 5, multicore = TRUE)
+
+
+# 用于交互式显示或保存图像
+rgl::rglwidget() # 用于交互式显示
+
+# 或将地图保存为静态图像
+rgl::rgl.snapshot("my_3d_map.png")
+
+```
+
+

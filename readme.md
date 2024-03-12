@@ -1,13 +1,13 @@
-# Virtual Wave Unveiling the Gaming World
-## COMP3023 DV Group Project
+
+# COMP3023 DV Group Project
 
 ## Author Information
 
-- **Name:** Henry, Adon, Tina, Dreama
+- **Name:** WANG Hanlin, Zhong Hailin, Ye Yujun, Zhang Meiyi
 - **Department:** Data Science
 - **Course:** Introduction to Data Visualization
 - **Environment for Game_Vis.Rmd:** macOS 12.7.1; Apple M1. 
-- **Enviroment for 3D-Plots:** Windows 11 22H2 22621.2715; AMD Ryzen 5 5600U; R Version: 4.2.2.
+- **Enviroment for 3D:** Windows 11 22H2 22621.2715; AMD Ryzen 5 5600U; R Version: 4.2.2.
 
 
 # Usage
@@ -50,7 +50,7 @@ library(SnowballC)
 ## 3D-implementation
 
 Due to the limitation of the Dashboard, it cannot show the 3D plot from `library(rayshader)`, which can run correctly in Rmd in RStudio. So we create another two Rmd file to implement the 3D code.
-To run our 3D-implementation code, you cloud direct to `3D_Heatmap.Rmd` and `3D_Map.Rmd`, and install the package below. **You need to run them directly in RStudio rather than knit to HTML.** Our running environment is Windows 11 22H2 22621.2715; AMD Ryzen 5 5600U, R Version: 4.2.2.
+To run our 3D-implementation code, you cloud direct to `3D_Heatmap.Rmd` and `3D_Map.Rmd`, and install the package below. Our running environment is Windows 11 22H2 22621.2715; AMD Ryzen 5 5600U, R Version: 4.2.2.
 
 ```{r}
 library(dplyr)

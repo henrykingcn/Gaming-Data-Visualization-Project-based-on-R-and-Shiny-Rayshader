@@ -1,0 +1,2452 @@
+---
+title: "Games Visualization" 
+# author: "WANG Hanlin"
+# date: "Dec 8th, 2023"
+output: 
+  flexdashboard::flex_dashboard:
+    source_code: embed
+    vertical_layout: scroll
+    theme: yeti
+---
+
+Hello, we are a Year 3 group from BNU-HKBU United International College, Data Science.
+I hope you guys can enjoy our project.
+Steam & Nintendo & PlayStation & Xbox
+
+
+```{js}
+// Inverse color of navigation bar.
+$('.navbar-inverse').removeClass('navbar-inverse').addClass('navbar-default');
+```
+
+```{r setup, include=FALSE}
+# Load necessary packages. 
+library(flexdashboard) # Dashboard package
+library(highcharter) # Interactive data visualizations
+library(plotly) # Interactive data visualizations
+library(viridis) # Color gradients
+library(tidyverse) # Metapackge
+library(countrycode) # Converts country names/codes
+library(rjson) # JSON reader
+library(crosstalk) # Provides interactivity for HTML widgets
+library(DT) # Displaying data tables
+
+```
+
+
+
+```{r include=FALSE}
+# Read in data. 
+custom_theme <- hc_theme(
+  colors = c('#5CACEE', 'green', 'red'),
+  chart = list(
+         backgroundColor = '#FAFAFA', 
+         plotBorderColor = "black"),
+  xAxis = list(
+         gridLineColor = "E5E5E5", 
+         labels = list(style = list(color = "#333333")), 
+         lineColor = "#E5E5E5", 
+         minorGridLineColor = "#E5E5E5", 
+         tickColor = "#E5E5E5", 
+         title = list(style = list(color = "#333333"))), 
+  yAxis = list(
+         gridLineColor = "#E5E5E5", 
+         labels = list(style = list(color = "#333333")), 
+         lineColor = "#E5E5E5", 
+         minorGridLineColor = "#E5E5E5", 
+         tickColor = "#E5E5E5", 
+         tickWidth = 1, 
+         title = list(style = list(color = "#333333"))),   
+  title = list(style = list(color = '#333333', fontFamily = "Lato")),
+  subtitle = list(style = list(color = '#666666', fontFamily = "Lato")),
+  legend = list(
+         itemStyle = list(color = "#333333"), 
+         itemHoverStyle = list(color = "#FFF"), 
+         itemHiddenStyle = list(color = "#606063")), 
+  credits = list(style = list(color = "#666")),
+  itemHoverStyle = list(color = 'gray'))
+```
+
+```{r include=FALSE}
+
+```
+
+```{=html}
+<style>
+.colored {
+  background-color: #FAFAFA;
+}
+</style>
+```
+# General
+
+## Column {.tabset .tabset-fade .colored data-width="700"}
+
+### Number of Publishers {.no-padding}
+
+```{r fig.height=5}
+
+library(dplyr)
+library(highcharter)
+
+data <- read.csv('steam_data.csv')
+names(data) <- gsub(" ", ".", names(data))
+data$Publisher <- gsub("[^A-Za-z0-9]", "", data$Publisher)
+
+hello <- Sys.setlocale("LC_TIME", "English")
+data$Release.Date <- as.Date(data$Release.Date, format = '%d %b, %Y')
+data$Release.Year <- format(data$Release.Date, '%Y')
+
+result <- data %>% 
+            select(Publisher, Release.Year) %>%
+            mutate(Release.Year = as.integer(Release.Year)) %>%
+            filter(!is.na(Release.Year)) %>%
+            group_by(Release.Year) %>%
+            summarize(Total.Publisher = n_distinct(Publisher)) %>%
+            arrange(Release.Year)
+
+result <- result[result$Release.Year <= 2022 & result$Total.Publisher > 1,]
+
+highchart() %>% 
+    hc_add_series(result, hcaes(x = Release.Year, y = Total.Publisher), type = "line") %>%
+    hc_xAxis(title = list(text = "Year"), categories = result$Release.Year) %>%
+    hc_yAxis(title = list(text = "Number of Publishers"), allowDecimals = FALSE) %>%
+    hc_tooltip(crosshairs = TRUE, borderWidth = 1.5, headerFormat = "", pointFormat = paste("Year: <b>{point.x}</b> <br> Publishers: <b>{point.y}</b>")) %>%
+    hc_title(text = "Yearly Count of Game Publishers") %>%
+    hc_subtitle(text = "Yearly Distribution") %>%
+    hc_legend(enabled = FALSE) %>% 
+    hc_add_theme(custom_theme)
+
+
+```
+
+### Cumulative Number of Games {.no-padding}
+
+```{r fig.height=5.14}
+
+library(dplyr)
+library(highcharter)
+
+data <- read.csv('Video_Games.csv')
+# 清理数据
+# 清理数据
+data <- data %>% 
+        filter(!is.na(Year_of_Release)) %>%
+        mutate(Year_of_Release = as.integer(Year_of_Release))
+
+# 计算每年游戏总数，并进行累积求和
+result <- data %>%
+            group_by(Year_of_Release) %>%
+            summarize(Total_Games = n()) %>%
+            arrange(Year_of_Release) %>%
+            mutate(Cumulative_Total_Games = cumsum(Total_Games))
+
+# 绘制累积曲线图
+p<-highchart() %>% 
+    hc_add_series(result, hcaes(x = Year_of_Release, y = Cumulative_Total_Games), type = "line") %>%
+    hc_tooltip(crosshairs = TRUE, borderWidth = 1.5, headerFormat = "", pointFormat = paste("Year: <b>{point.x}</b> <br> Cumulative Total Games: <b>{point.y}</b>")) %>%
+    hc_title(text = "Cumulative Total Number of Games Released per Year") %>% 
+    hc_subtitle(text = "Cumulative Yearly Distribution") %>%
+    hc_xAxis(title = list(text = "Year")) %>%
+    hc_yAxis(title = list(text = "Cumulative Number of Games"),
+             allowDecimals = FALSE) %>%
+    hc_legend(enabled = FALSE) %>% 
+    hc_add_theme(custom_theme)
+
+p
+```
+
+### Most Popular Tag {.no-padding}
+
+```{r}
+
+data <- read.csv("steam.csv", stringsAsFactors = FALSE)
+names(data) <- gsub(" ", ".", names(data))
+
+data$Popular.Tags <- str_replace_all(data$Popular.Tags, "\\[|\\]|\'|\"", "")
+data$Tags.List <- strsplit(data$Popular.Tags, ",\\s*")
+
+# 使用unnest()将列表扩展为多行
+data <- data %>%
+  unnest(Tags.List)
+
+result <- data %>%
+  select(Title, Tags.List)
+
+result[result == ""] <- NA
+result <- na.omit(result)
+
+
+result <- result %>% 
+                    group_by(Tags.List) %>%
+                    summarize(Total.Games = n_distinct(Title)) %>%
+                    arrange(desc(Total.Games))
+
+total_games <- sum(result$Total.Games)
+
+# 计算每个厂商发布的游戏数量占总游戏数量的百分比，并将其添加到 result 中
+result <- result %>%
+  mutate(Percentage = (Total.Games / total_games) * 100)
+
+p <- plot_ly(result,
+             type = "treemap",
+             labels = ~Tags.List,
+             parents = rep("", nrow(result)), # 假设所有的发布商都在同一层级
+             values = ~Total.Games,
+             text = ~paste(Tags.List, "<br>Total Games: ", Total.Games, "<br>Percentage: ", round(Percentage, 2), "%"),
+             textinfo = "text",
+             customdata = ~paste("Percentage: ", round(Percentage, 2), "%", sep = ""),
+             hovertemplate = "%{label}<br>Total Games: %{value}<br>%{customdata}<extra></extra>",
+             marker = list(
+               colors = ~Total.Games,
+               colorscale = "RdBu"
+             )) %>%
+  layout(title = "Most Popular Tag")
+
+p
+
+```
+
+### Most Powerful Publisher {.no-padding}
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# 读取数据
+data <- read.csv('steam.csv')
+
+names(data) <- gsub(" ", ".", names(data))
+data$Publisher <- gsub("[^A-Za-z0-9]", "", data$Publisher)
+#View(data)
+# 计算每个游戏厂商发布的游戏总数量
+publisher_counts <- data %>% 
+                    group_by(Publisher) %>%
+                    summarize(Total.Games = n()) %>%
+                    arrange(desc(Total.Games))
+
+publisher_counts$Total.Games <- as.numeric(as.character(publisher_counts$Total.Games))
+publisher_counts[publisher_counts == ""] <- NA
+publisher_counts <- na.omit(publisher_counts)
+result <- publisher_counts[publisher_counts$Total.Games >= 10,]
+total_games <- sum(result$Total.Games)
+
+# 计算每个厂商发布的游戏数量占总游戏数量的百分比，并将其添加到 result 中
+result <- result %>%
+  mutate(Percentage = (Total.Games / total_games) * 100)
+
+p <- plot_ly(result,
+             type = "treemap",
+             labels = ~Publisher,
+             parents = rep("", nrow(result)), # 假设所有的发布商都在同一层级
+             values = ~Total.Games,
+             text = ~paste(Publisher, "<br>Total Games: ", Total.Games, "<br>Percentage: ", round(Percentage, 2), "%"),
+             textinfo = "text",
+             customdata = ~paste("Percentage: ", round(Percentage, 2), "%", sep = ""),
+             hovertemplate = "%{label}<br>Total Games: %{value}<br>%{customdata}<extra></extra>",
+             marker = list(
+               colors = ~Total.Games,
+               colorscale = "RdBu"
+             )) %>%
+  layout(title = "Most Powerful Publisher")
+
+p
+
+```
+
+
+## Column {data-width="300"}
+
+### Total Game Count <font size='1'> (1980-2023) </font>
+
+```{r fig.height=0.8}
+# Grab worldwide number of suicides per 100K people from the data
+# total_suicides <- round(mean(overall_tibble$suicide_capita), 2)
+steam_data <- read.csv('steam_data.csv', stringsAsFactors = FALSE)
+
+
+# Create value box
+valueBox(length(steam_data$Title), icon = "fa-plus", color = 'firebrick')
+```
+
+### Reviews {.no-title .no-padding .colored}
+
+```{r fig.height=1.9}
+library(dplyr)
+library(highcharter)
+
+# 读取数据
+steam_data <- read.csv('steam_data.csv', stringsAsFactors = FALSE)
+
+# 数据准备，清除空值（NA）和非有效评价类别的条目
+steam_data_clean <- steam_data %>%
+  filter(!is.na(All.Reviews.Summary) & All.Reviews.Summary %in% c('Very Positive', 'Mixed Mostly Positive', 'Overwhelmingly Positive', 'Mostly Negative', 'Positive', 'Overwhelmingly Negative'))
+
+# 统计各个有效评价摘要的频率
+summary_counts <- steam_data_clean %>%
+  group_by(All.Reviews.Summary) %>%
+  summarise(Review_Count = n()) %>%
+  filter(All.Reviews.Summary != '0') %>%
+  ungroup()
+
+# 创建饼图
+highchart() %>%
+  hc_add_series(summary_counts, hcaes(x = All.Reviews.Summary, y = Review_Count), type = "pie") %>%
+  hc_tooltip(borderWidth = 1.5, headerFormat = "", pointFormat = paste("Category: <b>{point.All.Reviews.Summary} ({point.percentage:.1f}%)</b> <br> Count: <b>{point.y}</b>")) %>%
+  hc_title(text = "<b>Distribution of Steam Reviews</b>", style = list(fontSize = '14px')) %>% 
+  hc_subtitle(text = "Review Summary Distribution", style = list(fontSize = '10px')) %>%
+  hc_plotOptions(pie = list(dataLabels = list(distance = 5, style = list(fontSize = 10)), size = 130)) %>%
+  hc_add_theme(custom_theme)
+```
+
+### Free/Priced Games {.no-title .no-padding .colored}
+
+```{r fig.height=1.9}
+library(dplyr)
+library(highcharter)
+
+# 读取数据
+steam_data <- read.csv("steam_data.csv")
+
+# 处理数据
+steam_data <- steam_data %>%
+  mutate(Free_or_Not = ifelse(Original.Price == "Free", "Free", "Not Free")) %>%
+  group_by(Free_or_Not) %>%
+  summarise(Count = n())
+
+# 确保 Free_or_Not 作为因子处理
+steam_data$Free_or_Not <- as.factor(steam_data$Free_or_Not)
+
+# 创建饼图
+highchart() %>% 
+  hc_add_series(steam_data, hcaes(x = Free_or_Not, y = Count), type = "pie") %>%
+  hc_tooltip(borderWidth = 1.5, headerFormat = "", pointFormat = paste("Category: <b>{point.Free_or_Not} ({point.percentage:.1f}%)</b> <br> Count: <b>{point.y}</b>")) %>%
+  hc_title(text = "<b>Distribution of Free vs Not Free Games on Steam</b>", style = list(fontSize = '14px')) %>% 
+  hc_subtitle(text = "Game Price Category", style = list(fontSize = '10px')) %>%
+  hc_plotOptions(pie = list(dataLabels = list(distance = 5, style = list(fontSize = 10)), size = 130)) %>% 
+  hc_add_theme(custom_theme)
+
+```
+
+# Tags
+
+## Column {.tabset .tabset-fade .colored data-width="625"}
+
+### Stream Plot 1{.no-title .no-padding .colored}
+
+```{r}
+
+library(ggplot2)
+library(ggstream)
+library(cowplot)
+library(paletteer)
+library(dplyr)
+library(colorspace)
+
+# 读取数据
+data <- read.csv("new_steam_data.csv")
+
+#按总游戏数量排序后取20行
+top_categories <- data %>%
+  group_by(Tags.List) %>%
+  summarize(Total = sum(Count, na.rm = TRUE)) %>%
+  arrange(desc(Total)) %>%
+  slice(1:20) %>%
+  pull(Tags.List)
+
+data_top <- data %>%
+  filter(Tags.List %in% top_categories)
+
+#View(data_top)
+# 生成流图，inside_out按某一年游戏数量由内到外排列，onset按出现时间由内到外排列
+p <- ggplot(data_top, aes(x = Year, y = Count, fill = Tags.List, label = Tags.List)) +
+  geom_stream(extra_span = .1, bw = .75, alpha = 0.3, color = "black", sorting = "inside_out", spread = 0.9) +
+  #geom_stream_label(size = 3, type = "mirror", n_grid = 10) + #不准，最好不放
+  theme(legend.position = "right",
+        legend.key.size = unit(5, "mm")) +
+  xlim(2013.5, 2023.5) +
+  ylim(-35000, 35000) +
+  ggtitle("Tags Trend Over Year")
+
+p <- ggplotly(p)
+p
+
+
+```
+
+### Stream Plot 2{.no-title .no-padding .colored}
+
+```{r}
+top_categories <- data %>%
+  group_by(Tags.List) %>%
+  summarize(Total = sum(Count, na.rm = TRUE)) %>%
+  arrange(desc(Total)) %>%
+  slice(21:40) %>%
+  pull(Tags.List)
+
+data_top <- data %>%
+  filter(Tags.List %in% top_categories)
+
+#View(data_top)
+# 生成流图，inside_out按某一年游戏数量由内到外排列，onset按出现时间由内到外排列
+p <- ggplot(data_top, aes(x = Year, y = Count, fill = Tags.List, label = Tags.List)) +
+  geom_stream(extra_span = .1, bw = .75, alpha = 0.3, color = "black", sorting = "inside_out", spread = 0.9) +
+  #geom_stream_label(size = 3, type = "mirror", n_grid = 10) + #不准，最好不放
+  theme(legend.position = "right",
+        legend.key.size = unit(5, "mm")) +
+  xlim(2013.5, 2023.5) +
+  ylim(-15000, 15000) +
+  ggtitle("Tags Trend Over Year")
+
+p <- ggplotly(p)
+p
+
+
+```
+
+### Stream Plot 3{.no-title .no-padding .colored}
+
+```{r}
+
+top_categories <- data %>%
+  group_by(Tags.List) %>%
+  summarize(Total = sum(Count, na.rm = TRUE)) %>%
+  arrange(desc(Total)) %>%
+  slice(41:60) %>%
+  pull(Tags.List)
+
+data_top <- data %>%
+  filter(Tags.List %in% top_categories)
+
+#View(data_top)
+# 生成流图，inside_out按某一年游戏数量由内到外排列，onset按出现时间由内到外排列
+p <- ggplot(data_top, aes(x = Year, y = Count, fill = Tags.List, label = Tags.List)) +
+  geom_stream(extra_span = .1, bw = .75, alpha = 0.3, color = "black", sorting = "inside_out", spread = 0.9) +
+  #geom_stream_label(size = 3, type = "mirror", n_grid = 10) + #不准，最好不放
+  theme(legend.position = "right",
+        legend.key.size = unit(5, "mm")) +
+  xlim(2013.5, 2023.5) +
+  ylim(-10000, 10000) +
+  ggtitle("Tags Trend Over Year")
+
+p <- ggplotly(p)
+p
+
+
+```
+
+
+### Stream Plot 4{.no-title .no-padding .colored}
+
+```{r}
+#按总游戏数量排序后取20行
+top_categories <- data %>%
+  group_by(Tags.List) %>%
+  summarize(Total = sum(Count, na.rm = TRUE)) %>%
+  arrange(desc(Total)) %>%
+  slice(61:80) %>%
+  pull(Tags.List)
+
+data_top <- data %>%
+  filter(Tags.List %in% top_categories)
+
+#View(data_top)
+# 生成流图，inside_out按某一年游戏数量由内到外排列，onset按出现时间由内到外排列
+p <- ggplot(data_top, aes(x = Year, y = Count, fill = Tags.List, label = Tags.List)) +
+  geom_stream(extra_span = .1, bw = .75, alpha = 0.3, color = "black", sorting = "inside_out", spread = 0.9) +
+  #geom_stream_label(size = 3, type = "mirror", n_grid = 10) + #不准，最好不放
+  theme(legend.position = "right",
+        legend.key.size = unit(5, "mm")) +
+  xlim(2013.5, 2023.5) +
+  ylim(-10000, 10000)+
+  ggtitle("Tags Trend Over Year")
+
+p <- ggplotly(p)
+p
+
+# 保存图形到文件
+#ggsave("stream.png", plot = p1, width = 20, height = 30)
+```
+
+
+### Stream Plot 4{.no-title .no-padding .colored}
+
+```{r}
+#按总游戏数量排序后取20行
+top_categories <- data %>%
+  group_by(Tags.List) %>%
+  summarize(Total = sum(Count, na.rm = TRUE)) %>%
+  arrange(desc(Total)) %>%
+  slice(81:100) %>%
+  pull(Tags.List)
+
+data_top <- data %>%
+  filter(Tags.List %in% top_categories)
+
+#View(data_top)
+# 生成流图，inside_out按某一年游戏数量由内到外排列，onset按出现时间由内到外排列
+p <- ggplot(data_top, aes(x = Year, y = Count, fill = Tags.List, label = Tags.List)) +
+  geom_stream(extra_span = .1, bw = .75, alpha = 0.3, color = "black", sorting = "inside_out", spread = 0.9) +
+  #geom_stream_label(size = 3, type = "mirror", n_grid = 10) + #不准，最好不放
+  theme(legend.position = "right",
+        legend.key.size = unit(5, "mm")) +
+  xlim(2013.5, 2023.5) +
+  ylim(-10000, 10000)+
+  ggtitle("Tags Trend Over Year")
+
+p <- ggplotly(p)
+p
+# 保存图形到文件
+#ggsave("stream.png", plot = p1, width = 20, height = 30)
+```
+
+### Stream Plot 4{.no-title .no-padding .colored}
+
+```{r}
+#随机排序后取20行
+
+grouped_data <- data %>%
+  group_by(Tags.List) %>%
+  summarize(Total = sum(Count, na.rm = TRUE))
+
+data_random <- grouped_data %>% 
+  sample_n(nrow(grouped_data)) %>%
+  slice(81:100) %>%
+  pull(Tags.List)
+
+data_top <- data %>%
+  filter(Tags.List %in% data_random)
+
+#View(data_top)
+# 生成流图，inside_out按某一年游戏数量由内到外排列，onset按出现时间由内到外排列
+p <- ggplot(data_top, aes(x = Year, y = Count, fill = Tags.List, label = Tags.List)) +
+  geom_stream(extra_span = .1, bw = .75, alpha = 0.3, color = "black", sorting = "inside_out", spread = 0.9) +
+  #geom_stream_label(size = 3, type = "mirror", n_grid = 10) + #不准，最好不放
+  theme(legend.position = "right",
+        legend.key.size = unit(5, "mm")) +
+  xlim(2013.5, 2023.5) +
+  ylim(-10000, 10000)+
+  ggtitle("Tags Trend Over Year")
+
+p <- ggplotly(p)
+p
+# 保存图形到文件
+#ggsave("stream.png", plot = p1, width = 20, height = 30)
+```
+
+
+
+# Pricing Basic {data-navmenu="Pricing"}
+
+## Column {.tabset .tabset-fade .colored data-width="625"}
+
+### Box Plot {.no-title .no-padding .colored}
+
+```{r}
+library(plotly)
+library(dplyr)
+
+data <- read.csv("steam_data.csv")
+
+data$Release.Date <- as.Date(data$Release.Date, "%d %b, %Y")
+data$Year <- format(data$Release.Date, "%Y")
+data$Original.Price <- as.numeric(gsub("\\$", "", data$Original.Price))
+
+yearly_avg_prices <- data %>%
+                      group_by(Year) %>%
+                      summarise(AvgPrice = mean(Original.Price, na.rm = TRUE))
+
+# 筛选价格不超过 20 的游戏
+filtered_data <- data %>%
+                 filter(Original.Price <= 20)
+
+# 计算每年的平均价格
+yearly_avg_prices <- filtered_data %>%
+                     group_by(Year) %>%
+                     summarise(AvgPrice = mean(Original.Price, na.rm = TRUE))
+
+# 创建时间序列图和箱型图的组合图
+p <- plot_ly() %>%
+     add_trace(data = yearly_avg_prices, x = ~Year, y = ~AvgPrice, type = 'scatter', mode = 'lines+markers',
+               name = 'Average Price', line = list(color = 'blue')) %>%
+     add_trace(data = filtered_data, x = ~Year, y = ~Original.Price, type = 'box', name = 'Price Distribution',
+               marker = list(color = 'red')) %>%
+     layout(title = 'Steam Game Average Price and Price Distribution Over Time (Price <= $20)',
+            xaxis = list(title = 'Year'),
+            yaxis = list(title = 'Price (USD)'))
+
+# 展示图表
+p
+
+```
+
+### Heatmap {.no-title .no-padding .colored}
+
+```{r}
+
+# 筛选价格不超过 20 的游戏，并且从2005年开始
+filtered_data <- data %>%
+                 filter(Original.Price <= 20, as.numeric(Year) >= 2005)
+
+# 创建更宽的价格区间
+filtered_data$Price.Range <- cut(filtered_data$Original.Price, breaks = seq(0, 20, by = 2)) # 每2美元一个区间
+
+# 计算每个年份和价格区间的游戏数量
+heatmap_data <- filtered_data %>%
+                group_by(Year, Price.Range) %>%
+                summarise(Count = n()) %>%
+                ungroup()
+
+# 创建热力图
+p <- plot_ly(heatmap_data, x = ~Year, y = ~Price.Range, z = ~Count, type = 'heatmap', colors = 'Reds') %>%
+     layout(title = 'Heatmap of Game Count by Year and Price Range (Price <= $20, Since 2005)',xaxis = list(title = 'Year'))
+
+# 展示图表
+p
+
+```
+
+# Pricing Violin{data-navmenu="Pricing"}
+
+```{r}
+library(dplyr)
+library(scales)
+library(ggplot2)
+# 读取数据
+data <- read.csv('steam.csv')
+
+names(data) <- gsub(" ", ".", names(data))
+# 转换发行日期为标准时间格式，并提取年份
+hello<-Sys.setlocale("LC_TIME", "English")
+data$Release.Date <- as.Date(data$Release.Date, format = '%d %b, %Y')
+data$Release.Year <- format(data$Release.Date, '%Y')
+
+#View(data)
+# 处理价格数据：将“Free”替换为0，并移除美元符号
+data$Original.Price <- gsub('\\$', '', data$Original.Price)
+data$Original.Price <- gsub('Free', '0', data$Original.Price)
+data$Original.Price <- as.numeric(data$Original.Price)
+
+data <- na.omit(data)
+
+data <- data[(data$Release.Year <= 2023 ) & (data$Release.Year >= 2013),]
+data <- data[(data$Original.Price <= 100 ) & (data$Original.Price > 0),]
+
+#View(data)
+# 保留价格和年份
+result <- data %>% select(Original.Price, Release.Year)
+
+result$Original.Price <- as.numeric(as.character(result$Original.Price))
+result$Release.Year <- as.numeric(result$Release.Year)
+
+# 移除包含NA的行
+result[result == ""] <- NA
+result <- na.omit(result)
+
+
+library(plotly)
+
+# 首先计算每年的最高和最低价格
+min_prices <- aggregate(Original.Price ~ Release.Year, data = result, min)
+max_prices <- aggregate(Original.Price ~ Release.Year, data = result, max)
+
+# 创建交互式小提琴图
+p <- plot_ly(data = result, x = ~as.factor(Release.Year), y = ~Original.Price, type = 'violin', box = list(visible = TRUE), meanline = list(visible = TRUE), showlegend = F) %>%
+  add_trace(data = max_prices, x = ~as.factor(Release.Year), y = ~Original.Price, mode = 'markers', marker = list(size = 10), name = 'Maximum Price',showlegend = T) %>% add_trace(data = min_prices, x = ~as.factor(Release.Year), y = ~Original.Price, mode = 'markers', marker = list(size = 10), name = 'Minimum Price', showlegend = T) %>%
+  layout(title = "Yearly Distribution of Game Prices on Steam",
+         xaxis = list(title = "Release Year"),
+         yaxis = list(title = "Original Price (USD)", tickprefix = "$"),
+         legend = list(title = list(text = '')))
+
+# 显示图表
+p
+
+```
+
+# Pricing Hexbin Map {data-navmenu="Pricing"}
+
+## Column {.tabset .tabset-fade .colored data-width="625"}
+
+### Price with Tags Counts {.no-title .no-padding .colored}
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(scales)
+# 读取数据
+data <- read.csv("steam.csv")
+
+# 替换列名中的空格为点
+names(data) <- gsub(" ", ".", names(data))
+
+# 处理价格数据
+# 将“Free”替换为0，并移除美元符号
+data$Original.Price <- gsub("\\$", "", data$Original.Price)
+data$Original.Price[data$Original.Price == "Free"] <- "0"
+
+# 将价格转换为数值型
+data$Original.Price <- as.numeric(data$Original.Price)
+
+data <- na.omit(data)
+# 计算每个游戏的标签数量
+data$Tag.Count <- sapply(strsplit(gsub("[\\[\\]]", "", data$Popular.Tags), ", "), length)
+
+data <- data[(data$Original.Price < 100 )& (data$Original.Price > 10) & (data$Tag.Count > 1),]
+# 保留游戏名称、标签数量和价格
+result <- data %>% select(Tag.Count, Original.Price)
+
+result$Original.Price <- as.numeric(as.character(result$Original.Price))
+result$Tag.Count <- as.numeric(result$Tag.Count)
+
+# 移除包含NA的行
+result <- na.omit(result)
+
+h <- ggplot(result, aes(x = Tag.Count, y = Original.Price)) + 
+    geom_hex(bins = 20, color = "black") +
+  scale_y_continuous(labels = dollar_format(prefix = "$")) +
+    theme_minimal() +
+    xlab("TagNumber") + 
+    ylab("Price") +
+  scale_fill_gradientn(colors = c("purple", "blue", "cyan","green","yellow","orange", "red"), values = scales::rescale(c(0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 0.9)))+
+  ggtitle("Price with Tags Counts")
+
+j <- ggplotly(h)
+j
+
+
+```
+
+### Price with Year {.no-title .no-padding .colored}
+
+```{r}
+
+library(dplyr)
+library(scales)
+library(ggplot2)
+# 读取数据
+data <- read.csv('steam.csv')
+
+names(data) <- gsub(" ", ".", names(data))
+# 转换发行日期为标准时间格式，并提取年份
+hello<-Sys.setlocale("LC_TIME", "English")
+data$Release.Date <- as.Date(data$Release.Date, format = '%d %b, %Y')
+data$Release.Year <- format(data$Release.Date, '%Y')
+
+#View(data)
+# 处理价格数据：将“Free”替换为0，并移除美元符号
+data$Original.Price <- gsub('\\$', '', data$Original.Price)
+data$Original.Price <- gsub('Free', '0', data$Original.Price)
+data$Original.Price <- as.numeric(data$Original.Price)
+
+data <- na.omit(data)
+
+data <- data[(data$Original.Price < 100 ) & (data$Original.Price > 10),]
+
+#View(data)
+# 保留价格和年份
+result <- data %>% select(Original.Price, Release.Year)
+
+result$Original.Price <- as.numeric(as.character(result$Original.Price))
+result$Release.Year <- as.numeric(result$Release.Year)
+
+# 移除包含NA的行
+result[result == ""] <- NA
+result <- na.omit(result)
+
+h <- ggplot(result, aes(x = Release.Year, y = Original.Price)) + 
+    geom_hex(bins = 20, color = "black") +
+  scale_y_continuous(labels = dollar_format(prefix = "$"))+
+    theme_minimal() +
+    xlab("Year") + 
+    ylab("Price") +
+  scale_fill_gradientn(colors = c("purple", "blue", "cyan","green","yellow","orange", "red"), values = scales::rescale(c(0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 0.9)))+
+  ggtitle("Price with Year")
+
+j <- ggplotly(h)
+j
+```
+
+
+### Price with Develeper {.no-title .no-padding .colored}
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# 读取数据
+data <- read.csv('steam.csv')
+
+names(data) <- gsub(" ", ".", names(data))
+data$Publisher <- gsub("[^A-Za-z0-9]", "", data$Publisher)
+data$Original.Price <- gsub('\\$', '', data$Original.Price)
+data$Original.Price <- gsub('Free', '0', data$Original.Price)
+#View(data)
+# 计算每个游戏厂商发布的游戏总数量
+publisher_counts <- data %>% 
+                    group_by(Publisher) %>%
+                    summarize(Total.Games = n()) %>%
+                    arrange(desc(Total.Games))
+
+publisher_counts$Total.Games <- as.numeric(as.character(publisher_counts$Total.Games))
+publisher_counts[publisher_counts == ""] <- NA
+publisher_counts <- na.omit(publisher_counts)
+publisher_counts <- publisher_counts[publisher_counts$Total.Games >= 10,]
+
+#View(publisher_counts)
+data <- merge(data, publisher_counts, by = "Publisher")
+result <- data %>% select(Original.Price, Total.Games)
+result$Original.Price <- as.numeric(as.character(result$Original.Price))
+result <- na.omit(result)
+
+result <- result[(result$Original.Price < 100) & (result$Original.Price > 10),]
+
+h <- ggplot(result, aes(x = Total.Games, y = Original.Price)) + 
+    geom_hex(bins = 20, color = "black") +
+  scale_y_continuous(labels = dollar_format(prefix = "$"))+
+    theme_minimal() +
+    xlab("TotalGames") + 
+    ylab("Price") +
+  scale_fill_gradientn(colors = c("purple", "blue", "cyan","green","yellow","orange", "red"), values = scales::rescale(c(0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 0.9)))+
+  ggtitle("Price with Number of Games Release by Different Publishers")
+
+j <- ggplotly(h)
+j
+```
+
+
+
+# Publisher
+
+## Column {.tabset .tabset-fade .colored data-width="625"}
+
+### Publiser's Game by Year {.no-title .no-padding .colored data-width=650}
+
+```{r}
+
+library(dplyr)
+library(scales)
+library(ggplot2)
+# 读取数据
+data <- read.csv('steam.csv')
+
+names(data) <- gsub(" ", ".", names(data))
+# 转换发行日期为标准时间格式，并提取年份
+hello<-Sys.setlocale("LC_TIME", "English")
+data$Release.Date <- as.Date(data$Release.Date, format = '%d %b, %Y')
+data$Release.Year <- format(data$Release.Date, '%Y')
+data$Publisher <- gsub("[^A-Za-z0-9]", "", data$Publisher)
+
+#View(data)
+result <- data %>% select(Publisher, Release.Year)
+result[result == ""] <- NA
+result <- na.omit(result)
+result <- result[(result$Release.Year <= 2023 ),]
+result <- result %>%
+  group_by(Release.Year) %>%
+  summarise(Publishers = n_distinct(Publisher))
+
+p <- plot_ly(result, x = ~Release.Year, y = ~Publishers, type = 'bar',
+             marker = list(color = 'rgb(55, 83, 109)')) %>%
+  layout(title = "Number of Unique Game Publishers Per Year",
+         xaxis = list(title = "Release Year", type = "category",
+              rangeslider = list(visible = TRUE,thickness = 0.03)),
+         yaxis = list(title = "Number of Publishers"),
+         barmode = 'group')
+
+p
+
+```
+
+### Some Publiser's Game by Year {.no-title .no-padding .colored data-width=650 }
+
+```{r}
+library(dplyr)
+library(scales)
+library(ggplot2)
+# 读取数据
+data <- read.csv('steam.csv')
+
+names(data) <- gsub(" ", ".", names(data))
+# 转换发行日期为标准时间格式，并提取年份
+hello<-Sys.setlocale("LC_TIME", "English")
+data$Release.Date <- as.Date(data$Release.Date, format = '%d %b, %Y')
+data$Release.Year <- format(data$Release.Date, '%Y')
+data$Publisher <- gsub("[^A-Za-z0-9]", "", data$Publisher)
+publisher_counts <- data %>% 
+                    group_by(Publisher, Release.Year) %>%
+                    summarize(Total.Games = n()) %>%
+                    arrange(desc(Total.Games))
+
+publisher_counts$Total.Games <- as.numeric(as.character(publisher_counts$Total.Games))
+publisher_counts[publisher_counts == ""] <- NA
+publisher_counts <- na.omit(publisher_counts)
+result <- publisher_counts[(publisher_counts$Release.Year <= 2023 ) & (publisher_counts$Total.Games >= 10) & (publisher_counts$Release.Year >= 2013),]
+
+top_Publisher <- result %>%
+  group_by(Publisher) %>%
+  summarize(Total = sum(Total.Games)) %>%
+  arrange(desc(Total)) %>%
+  slice(1:20) %>%
+  pull(Publisher)
+
+result_top <- result %>%
+  filter(Publisher %in% top_Publisher)
+
+library(ggplot2)
+
+# 使用ggplot2创建热图
+p <- ggplot(result_top, aes(x = Release.Year, y = Publisher, fill = Total.Games)) +
+  geom_tile() + # 创建热图
+  scale_fill_gradientn(colors = c("purple", "blue", "cyan","green","yellow","orange", "red"), values = scales::rescale(c(0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 0.9))) + # 设置颜色渐变
+  labs(title = "Number of Games Published by Top 20 Publisher",
+       x = "Release Year",
+       y = "Publisher",
+       fill = "Total Games") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = -45, hjust = 0)) # 调整X轴标签角度
+
+# 显示图表
+j <- ggplotly(p)
+j
+
+
+```
+
+
+
+# Popular Tags{data-navmenu="Time Control"}
+Column {data-width=650}
+-------------------------------------
+
+```{r}
+
+# 加载必要的库
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(flexdashboard)
+library(ggplot2)
+library(shiny)
+
+# 读取数据
+steam_data <- read.csv('steam_data.csv', stringsAsFactors = FALSE)
+
+date_formats <- c("d m, Y", "Y-m-d")
+
+# 数据清洗和准备
+steam_data <- steam_data %>%
+  # 转换发布日期为日期格式并提取年份
+  mutate(`Release.Date` = parse_date_time(`Release.Date`, orders = date_formats),Year = year(`Release.Date`)) %>%
+  # 去除发布日期或标签为空的行
+  filter(!is.na(Year), Year <= 2023,Year >= 1980, !is.na(`Popular.Tags`)) %>%
+  # 清洗并分割标签
+  mutate(`Popular.Tags` = strsplit(`Popular.Tags`, ", ")) %>%
+  unnest(`Popular.Tags`) %>%
+  # 移除标签前后的空格和引号
+  mutate(`Popular.Tags` = gsub("^\\['|'\\]$", "", trimws(`Popular.Tags`)))
+
+# 计算每个标签每年的总数量
+tag_count_per_year <- steam_data %>%
+  group_by(Year, `Popular.Tags`) %>%
+  summarise(Count = n(), .groups = "drop")
+
+sliderInput("yearRange", "Select Year Range:",
+            min = min(tag_count_per_year$Year), max = max(tag_count_per_year$Year),
+            value = c(min(tag_count_per_year$Year), max(tag_count_per_year$Year)))
+
+
+# 标签计数图
+renderPlot({
+  # 根据时间滑块的值过滤数据
+  filtered_data <- subset(tag_count_per_year, Year >= input$yearRange[1] & Year <= input$yearRange[2])
+  
+    # 为每年选出前十个标签
+  top_tags_per_year <- filtered_data %>%
+    group_by(Year) %>%
+    arrange(desc(Count)) %>%
+    top_n(10, Count) %>%
+    ungroup()
+
+  # 绘制图表
+  ggplot(top_tags_per_year, aes(x = Year, y = Count, fill = `Popular.Tags`)) +
+    geom_bar(stat = "identity", position = position_dodge()) +
+    theme_minimal() +
+    labs(title = "Popular Tags by Year", x = "Year", y = "Count") +
+    theme(legend.position = "bottom")
+
+})
+
+
+```
+
+Column {data-width=650}
+-------------------------------------
+
+# Popular Developer{data-navmenu="Time Control"}
+
+```{r}
+# 加载必要的库
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+library(shiny)
+
+# 读取数据
+steam_data <- read.csv('steam_data.csv', stringsAsFactors = FALSE)
+
+# 数据清洗和准备
+steam_data <- steam_data %>%
+  # 转换发布日期为日期格式并提取年份
+  mutate(`Release.Date` = parse_date_time(`Release.Date`, orders = c("d m, Y", "Y-m-d")),
+         Year = year(`Release.Date`)) %>%
+  # 去除发布日期或游戏厂商为空的行
+  filter(!is.na(Year), Year <= 2023, Year >= 1980, !is.na(`Developer`)) %>%
+  # 分割游戏厂商数据
+  separate_rows(`Developer`, sep = ", ") %>%
+  # 移除游戏厂商前后的空格和引号
+  mutate(`Developer` = gsub("^\\['|'\\]$", "", trimws(`Developer`)))
+
+# 计算每个游戏厂商每年的总数量
+developer_count_per_year <- steam_data %>%
+  group_by(Year, `Developer`) %>%
+  summarise(Count = n(), .groups = "drop")
+
+# Shiny应用的UI部分
+ui <- fluidPage(
+  titlePanel("Popular Game Developers by Year"),
+  sidebarLayout(
+    sidebarPanel(
+      sliderInput("yearRange", "Select Year Range:",
+                  min = min(developer_count_per_year$Year), 
+                  max = max(developer_count_per_year$Year),
+                  value = c(min(developer_count_per_year$Year), max(developer_count_per_year$Year))
+      )
+    ),
+    mainPanel(
+      plotOutput("developerPlot")
+    )
+  )
+)
+
+# Shiny应用的Server部分
+server <- function(input, output) {
+  output$developerPlot <- renderPlot({
+    # 根据时间滑块的值过滤数据
+    filtered_data <- subset(developer_count_per_year, Year >= input$yearRange[1] & Year <= input$yearRange[2])
+    
+    # 为每年选出前十个游戏厂商
+    top_developers_per_year <- filtered_data %>%
+      group_by(Year) %>%
+      arrange(desc(Count)) %>%
+      top_n(5, Count) %>%
+      ungroup()
+
+    # 如果选择了所有时间范围，限制最多显示15个不同的游戏厂商
+    if (input$yearRange[1] == min(developer_count_per_year$Year) && input$yearRange[2] == max(developer_count_per_year$Year)) {
+      top_developers <- top_developers_per_year %>%
+        ungroup() %>%
+        arrange(desc(Count)) %>%
+        mutate(rank = dense_rank(desc(Count))) %>%
+        filter(rank <= 20) %>%
+        select(-rank)
+      top_developers_per_year <- top_developers
+    }
+
+    # 绘制图表
+    ggplot(top_developers_per_year, aes(x = Year, y = Count, fill = `Developer`)) +
+      geom_bar(stat = "identity", position = position_dodge()) +
+      theme_minimal() +
+      labs(title = "Popular Game Developers by Year", x = "Year", y = "Count") +
+      theme(legend.position = "bottom")
+  
+  })
+}
+
+
+# 运行Shiny应用
+shinyApp(ui = ui, server = server)
+```
+
+
+# Popular Feature {data-navmenu="Time Control"}
+```{r}
+# 加载必要的库
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+library(shiny)
+
+# 读取数据
+steam_data <- read.csv('steam_data.csv', stringsAsFactors = FALSE)
+
+# 数据清洗和准备
+steam_data <- steam_data %>%
+  # 转换发布日期为日期格式并提取年份
+  mutate(`Release.Date` = parse_date_time(`Release.Date`, orders = c("d m, Y", "Y-m-d")),
+         Year = year(`Release.Date`)) %>%
+  # 去除发布日期或游戏特性为空的行
+  filter(!is.na(Year), Year <= 2023, Year >= 2000, !is.na(`Game.Features`)) %>%
+  # 分割游戏特性数据
+  separate_rows(`Game.Features`, sep = ", ") %>%
+  # 移除游戏特性前后的空格和引号
+  mutate(`Game.Features` = gsub("^\\['|'\\]$", "", trimws(`Game.Features`)))
+
+# 计算每个游戏特性每年的总数量
+feature_count_per_year <- steam_data %>%
+  group_by(Year, `Game.Features`) %>%
+  summarise(Count = n(), .groups = "drop")
+
+# Shiny应用的UI部分
+ui <- fluidPage(
+  titlePanel("Popular Game Features by Year"),
+  sidebarLayout(
+    sidebarPanel(
+      sliderInput("yearRange", "Select Year Range:",
+                  min = min(feature_count_per_year$Year), 
+                  max = max(feature_count_per_year$Year),
+                  value = c(min(feature_count_per_year$Year), max(feature_count_per_year$Year))
+      )
+    ),
+    mainPanel(
+      plotOutput("featurePlot")
+    )
+  )
+)
+
+# Shiny应用的Server部分
+server <- function(input, output) {
+  output$featurePlot <- renderPlot({
+    # 根据时间滑块的值过滤数据
+    filtered_data <- subset(feature_count_per_year, Year >= input$yearRange[1] & Year <= input$yearRange[2])
+    
+    # 限制最多显示15个不同的游戏特性
+    top_features <- filtered_data %>%
+      ungroup() %>%
+      arrange(desc(Count)) %>%
+      mutate(rank = dense_rank(desc(Count))) %>%
+      filter(rank <= 30) %>%
+      select(-rank)
+    top_features_per_year <- top_features
+
+    # 绘制图表
+    ggplot(top_features_per_year, aes(x = Year, y = Count, fill = `Game.Features`)) +
+      geom_bar(stat = "identity", position = position_dodge()) +
+      theme_minimal() +
+      labs(title = "Popular Game Features by Year", x = "Year", y = "Count") +
+      theme(legend.position = "bottom")
+  })
+}
+
+# 运行Shiny应用
+shinyApp(ui = ui, server = server)
+
+
+```
+
+# Game Feature by year {data-navmenu="Time Control"}
+
+```{r}
+library(readr)
+
+library(tidyverse)
+library(plotly)
+# Set the path to your CSV file
+file_path <- "steam_data.csv" # Please ensure this path is correct
+
+# Read the data
+data <- read.csv(file_path)
+
+# Replace spaces with underscores in column names
+names(data) <- gsub(" ", "_", names(data))
+
+
+# 筛选包含指定年份的行并提取前15个游戏功能
+filtered_data_2019 <- data %>%
+  filter(str_detect(Release.Date, "2019")) %>%
+  select(Game.Features) %>%
+  separate_rows(Game.Features, sep = ", ") %>%
+  count(Game.Features) %>%
+  top_n(15)
+
+filtered_data_2020 <- data %>%
+  filter(str_detect(Release.Date, "2020")) %>%
+  select(Game.Features) %>%
+  separate_rows(Game.Features, sep = ", ") %>%
+  count(Game.Features) %>%
+  top_n(15)
+
+filtered_data_2021 <- data %>%
+  filter(str_detect(Release.Date, "2021")) %>%
+  select(Game.Features) %>%
+  separate_rows(Game.Features, sep = ", ") %>%
+  count(Game.Features) %>%
+  top_n(15)
+
+filtered_data_2022 <- data %>%
+  filter(str_detect(Release.Date, "2022")) %>%
+  select(Game.Features) %>%
+  separate_rows(Game.Features, sep = ", ") %>%
+  count(Game.Features) %>%
+  top_n(15)
+
+filtered_data_2023 <- data %>%
+  filter(str_detect(Release.Date, "2023")) %>%
+  select(Game.Features) %>%
+  separate_rows(Game.Features, sep = ", ") %>%
+  count(Game.Features) %>%
+  top_n(15)
+
+# 将数据合并为一个数据框
+combined_features <- bind_rows(mutate(filtered_data_2019, Year = "2019"),
+                               mutate(filtered_data_2020, Year = "2020"),
+                               mutate(filtered_data_2021, Year = "2021"),
+                               mutate(filtered_data_2022, Year = "2022"),
+                               mutate(filtered_data_2023, Year = "2023"))
+
+clean_data <- function(df) {
+  df[] <- lapply(df, function(x) {
+    if(is.character(x)) {
+      x <- gsub(pattern = "\\[|\\]|'", replacement = "", x)
+    }
+    x
+  })
+  df
+}
+
+# Apply the function to the combined dataset
+combined_features <- clean_data(combined_features)
+
+
+# 创建交互式Bubble Chart
+plot_ly(combined_features, x = ~Game.Features, y = ~n, size = ~n, text = ~paste("Feature: ", Game.Features, "<br>Count: ", n, "<br>Year: ", Year)) %>%
+  add_markers(color = ~factor(Year), colors = c("orange", "yellow", "blue", "green", "red"), opacity = 0.7) %>%
+  layout(
+    xaxis = list(title = "Game Features"),
+    yaxis = list(title = "Count"),
+    title = "Top 15 Game Features (2019-2023)",
+    hovermode = "closest",
+    legend = list(
+      title = list(text = "Year"),
+      orientation = "v",
+      x = 1.05,
+      y = 0.5,
+      xanchor = "left",
+      yanchor = "middle"
+    )
+  )
+
+
+
+```
+
+
+# Map
+
+## Column {.tabset .tabset-fade .colored data-width="625"}
+
+### Count of Languages of Counrties {.no-title .no-padding .colored}
+
+```{r}
+
+# Load necessary library
+library(tidyverse)
+
+# Read the CSV file
+steam_data <- read.csv("steam_data.csv", stringsAsFactors = FALSE)
+
+# Assuming 'Supported Languages' contains comma-separated language names
+# and is named 'Supported_Languages' in the dataframe
+language_counts <- steam_data %>%
+  # Pull the column of interest into a vector
+  pull(Supported.Languages) %>%
+  # Split each string into individual languages
+  strsplit(split = ",") %>%
+  # Unlist into a single vector
+  unlist() %>%
+  # Trim whitespace
+  trimws() %>%
+  gsub(pattern = "\\['|'\\]|'", replacement = "") %>%
+  # Create a table of counts
+  table()
+
+# Sort the language counts in descending order
+sorted_language_counts <- sort(language_counts, decreasing = TRUE)
+
+library(ggplot2)
+library(rnaturalearth)
+library(dplyr)
+
+# Country-language mapping
+language_country_map <- list(
+  'English' = c('United States', 'United Kingdom', 'Canada', 'Australia'),
+  'French' = c('France', 'Canada', 'Belgium', 'Switzerland'),
+  'German' = c('Germany', 'Austria', 'Switzerland'),
+  'Spanish - Spain' = c('Spain'),
+  'Russian' = c('Russia'),
+  'Simplified Chinese' = c('China'),
+  'Polish' = c('Poland'),
+  'Turkish' = c('Turkey'),
+  'Portuguese - Brazil' = c('Brazil'),
+  'Italian' = c('Italy'),
+  'Spanish - Latin America' = c(
+  'Argentina', 'Bolivia', 'Chile', 'Colombia', 'Costa Rica', 'Cuba',
+  'Dominican Republic', 'Ecuador', 'El Salvador', 'Guatemala', 'Honduras',
+  'Mexico', 'Nicaragua', 'Panama', 'Paraguay', 'Peru', 'Puerto Rico',
+  'Spain (Canary Islands)', 'Uruguay', 'Venezuela', 'Various other Latin American countries'
+),
+  'Traditional Chinese' = c('Taiwan', 'Hong Kong', 'China'),
+  'Ukrainian' = c('Ukraine'),
+  'Czech' = c('Czech Republic'),
+  'Danish' = c('Denmark'),
+  'Dutch' = c('Netherlands'),
+  'Finnish' = c('Finland'),
+  'Hungarian' = c('Hungary'),
+  'Japanese' = c('Japan'),
+  'Norwegian' = c('Norway'),
+  'Portuguese - Portugal' = c('Portugal'),
+  'Romanian' = c('Romania'),
+  'Swedish' = c('Sweden'),
+  'Thai' = c('Thailand'),
+  'Bulgarian' = c('Bulgaria'),
+  'Greek' = c('Greece'),
+  'Vietnamese' = c('Vietnam'),
+  'Belarusian' = c('Belarus'),
+  'Estonian' = c('Estonia'),
+  'Macedonian' = c('North Macedonia'),
+  'Serbian' = c('Serbia'),
+  'Slovak' = c('Slovakia'),
+  'Catalan' = c('Catalonia'),
+  'Croatian' = c('Croatia'),
+  'Indonesian' = c('Indonesia'),
+  'Latvian' = c('Latvia'),
+  'Lithuanian' = c('Lithuania'),
+  'Hindi' = c('India'),
+  'Malay' = c('Malaysia'),
+  'Kazakh' = c('Kazakhstan'),
+  'Georgian' = c('Georgia'),
+  'Filipino' = c('Philippines'),
+  'Afrikaans' = c('South Africa'),
+  'Basque' = c('Basque Country'),
+  'Hebrew' = c('Israel'),
+  'Persian' = c('Iran'),
+  'Azerbaijani' = c('Azerbaijan'),
+  'Irish' = c('Ireland'),
+  'Welsh' = c('Wales'),
+  'Galician' = c('Galicia'),
+  'Mongolian' = c('Mongolia'),
+  'Albanian' = c('Albania'),
+  'Amharic' = c('Ethiopia'),
+  'Armenian' = c('Armenia'),
+  'Assamese' = c('Assam, India'),
+  'Bangla' = c('Bangladesh'),
+  'Bosnian' = c('Bosnia and Herzegovina'),
+  'Cherokee' = c('Cherokee Nation'),
+  'Dari' = c('Afghanistan'),
+  '"Kiche"' = c('Various Indigenous communities'),
+  'Kannada' = c('Karnataka, India'),
+  'Khmer' = c('Cambodia'),
+  'Kinyarwanda' = c('Rwanda'),
+  'Konkani' = c('Goa, India'),
+  'Korean' = c('Korea'),
+  'Kyrgyz' = c('Kyrgyzstan'),
+  'Luxembourgish' = c('Luxembourg'),
+  'Malayalam' = c('Kerala, India'),
+  'Maltese' = c('Malta'),
+  'Maori' = c('New Zealand'),
+  'Marathi' = c('Maharashtra, India'),
+  'Nepali' = c('Nepal'),
+  'Odia' = c('Odisha, India'),
+  'Punjabi (Gurmukhi)' = c('Punjab, India'),
+  'Punjabi (Shahmukhi)' = c('Punjab, Pakistan'),
+  'Quechua' = c('Various Andean countries'),
+  'Scots' = c('Scotland'),
+  'Sindhi' = c('Sindh, Pakistan'),
+  'Sinhala' = c('Sri Lanka'),
+  'Slovenian' = c('Slovenia'),
+  'Sorani' = c('Kurdistan Region'),
+  'Sotho' = c('Lesotho'),
+  'Swahili' = c(
+  'Kenya', 'Tanzania', 'Uganda', 'Rwanda', 'Burundi', 'Democratic Republic of the Congo', 
+  'Comoros', 'Mayotte', 'Mozambique', 'Oman', 'Somalia', 'South Sudan', 'Zambia'
+),
+  'Tajik' = c('Tajikistan'),
+  'Tamil' = c('Tamil Nadu, India'),
+  'Tatar' = c('Tatarstan'),
+  'Telugu' = c('Andhra Pradesh, India'),
+  'Tigrinya' = c('Eritrea'),
+  'Tswana' = c('Botswana'),
+  'Turkmen' = c('Turkmenistan'),
+  'Urdu' = c('Pakistan'),
+  'Uyghur' = c('Xinjiang, China'),
+  'Uzbek' = c('Uzbekistan'),
+  'Valencian' = c('Valencia, Spain'),
+  'Wolof' = c('Senegal'),
+  'Xhosa' = c('South Africa'),
+  'Yoruba' = c('Nigeria'),
+  'Zulu' = c('South Africa'),
+  'Arabic' = c('Algeria', 'Bahrain', 'Comoros', 'Djibouti', 'Egypt', 'Iraq',
+  'Jordan', 'Kuwait', 'Lebanon', 'Libya', 'Mauritania', 'Morocco',
+  'Oman', 'Palestine', 'Qatar', 'Saudi Arabia', 'Somalia', 'Sudan',
+  'Syria', 'Tunisia', 'United Arab Emirates', 'Yemen')
+)
+
+
+
+# Get world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Initialize a dataframe to store the number of languages per country
+country_language_counts <- data.frame(
+  country = world$name,
+  languages = 0
+)
+
+# Increment the count for each country based on the language_country_map
+for(language in names(language_country_map)) {
+  countries <- language_country_map[[language]]
+  country_language_counts$languages[country_language_counts$country %in% countries] <- country_language_counts$languages[country_language_counts$country %in% countries] + 1
+}
+
+# Merge this info with the world map data
+world <- left_join(world, country_language_counts, by = c("name" = "country"))
+
+# Plotting the map
+p<-ggplot(data = world) +
+  geom_sf(aes(fill = languages), color = NA) + 
+  scale_fill_gradient(low = "lightblue", high = "darkblue", na.value = "grey50", name = "Number of Languages") +
+  theme_void()  # To remove axis and background
+
+plotly_map <- ggplotly(p)
+
+# 显示 plotly 地图
+plotly_map
+
+```
+
+### Count of Languages of Counrties {.no-title .no-padding .colored}
+
+```{r}
+
+country_game_counts <- data.frame(country = unlist(language_country_map), game_count = 0)
+
+# 计算每个国家支持的游戏总数
+for (language in names(language_country_map)) {
+  countries <- language_country_map[[language]]
+  count <- sorted_language_counts[language]
+  country_game_counts$game_count[country_game_counts$country %in% countries] <- country_game_counts$game_count[country_game_counts$country %in% countries] + count
+}
+
+# 获取世界地图数据
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# 合并游戏计数和世界地图数据
+world_with_game_counts <- left_join(world, country_game_counts, by = c("name" = "country"))
+
+country_game_counts$language <- sapply(country_game_counts$country, function(country) {
+  paste(names(which(sapply(language_country_map, function(x) country %in% x))), collapse = ", ")
+})
+
+# 获取世界地图数据
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# 合并游戏计数和世界地图数据
+world_with_game_counts <- left_join(world, country_game_counts, by = c("name" = "country"))
+
+# 使用 ggplot 创建基础地图
+gg_map <- ggplot(data = world_with_game_counts) +
+  geom_sf(aes(fill = game_count, text = paste("Country/Region:", name, "<br>Games:", game_count, "<br>Languages:", language)), color = NA) +
+  scale_fill_gradient(low = "lightgreen", high = "darkred", na.value = "grey50", name = "Total Game Count") +
+  theme_void()  # 移除轴和背景
+
+# 将 ggplot 地图转换为 plotly 对象
+plotly_map <- ggplotly(gg_map, tooltip = "text")
+
+# 显示 plotly 地图
+plotly_map
+
+
+```
+
+### Count of Languages of Counrties 3 {.no-title .no-padding .colored}
+
+```{r}
+library(shiny)
+
+ui <- fluidPage(
+  tags$head(
+    tags$style(HTML("
+      video {
+        max-width: 100%;
+        height: auto;
+      }
+    "))
+  ),
+  tags$video(src = "map.mp4", type = "video/mp4", controls = TRUE, autoplay = TRUE)
+)
+
+server <- function(input, output, session) {}
+
+shinyApp(ui = ui, server = server)
+
+```
+
+
+
+# Game Players
+
+## Column {.tabset .tabset-fade .colored data-width="400"}
+
+### Average Game Player in Top 5 Games {.no-padding}
+
+```{r}
+library(ggplot2)
+library(flexdashboard)
+library(lubridate)
+library(dplyr)
+library(plotly)
+library(readr)
+library(scales)
+
+player_data <- read_csv("Valve_Player_Data.csv", show_col_types = FALSE)
+
+games <- c("Team Fortress 2", "Counter Strike: Global Offensive", "Dota 2", "PUBG: Battlegrounds", "Apex Legends", "Grand Theft Auto V")
+
+player_data$Date <- as.Date(player_data$Date)  
+
+p <- player_data %>% 
+  filter(Game_Name %in% games) %>% 
+  filter(Date > "2019-01-01" & Date < "2021-01-01") %>%
+  ggplot() + aes(x = Date, y = Avg_players, color = Game_Name) + 
+  geom_line(size = 0.5) + 
+  theme_minimal(base_size = 13) + 
+  scale_y_continuous(labels = comma) + 
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.title = element_text(size = 13, face = "bold"),
+    axis.text.x = element_text(angle = 30),
+    axis.text = element_text(size = 12)
+  ) + 
+  xlab("") + 
+  ylab("Average Players\n") + 
+  ggtitle("Average Players By Month") + 
+  scale_colour_discrete(name = "Game") + 
+  scale_x_date(date_labels = "%Y", date_breaks = "1 year") 
+  
+# 转换为plotly对象
+plotly_obj <- ggplotly(p)
+
+# 使用plotly的方式添加注释
+plotly_obj %>%
+  add_annotations(
+    x = as.Date('2020-03-01'), y = 950000, text = "Lockdowns Begin",
+    showarrow = TRUE, arrowhead = 2
+  )
+
+
+```
+
+### Average Game Player in Top 5 Games {.no-padding}
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(GGally)
+library(lubridate)
+library(plotly)
+library(RColorBrewer)
+
+# Read the data from CSV file
+data <- read.csv("Valve_Player_Data.csv")
+
+# Extract the year from 'Month_Year' column
+data$Year <- as.numeric(substr(data$Month_Year, nchar(data$Month_Year)-3, nchar(data$Month_Year)))
+
+# Group by 'Year' and 'Game_Name' to calculate the mean of 'Avg_players'
+yearly_avg <- data %>%
+  group_by(Year, Game_Name) %>%
+  summarise(Avg_players = mean(Avg_players, na.rm = TRUE)) %>%
+  ungroup()
+
+# Pivot the data to have 'Year' as columns and 'Game_Name' as rows
+pivot_data <- yearly_avg %>%
+  pivot_wider(names_from = Year, values_from = Avg_players, values_fill = list(Avg_players = 0))
+
+# Add a unique identifier for each game
+pivot_data$Game_ID <- seq_len(nrow(pivot_data))
+
+# Create a color palette with a distinct color for each game
+color_palette <- brewer.pal(n = nrow(pivot_data), name = "Set3")
+
+# Create a list of dimensions for the plotly plot
+dimensions <- lapply(names(pivot_data)[-c(1, ncol(pivot_data))], function(year) {
+  list(range = c(min(pivot_data[[year]], na.rm = TRUE), max(pivot_data[[year]], na.rm = TRUE)),
+       label = year, values = pivot_data[[year]])
+})
+
+# Generate the plotly interactive parallel coordinates plot
+fig <- plot_ly(pivot_data, type = 'parcoords', dimensions = dimensions,
+               line = list(color = ~pivot_data$Game_ID,
+                           colorscale = list(c(min(pivot_data$Game_ID), max(pivot_data$Game_ID)), color_palette))
+              ) %>%
+  layout(
+    title = 'Yearly Average Players per Game',
+    xaxis = list(title = 'Year'),
+    yaxis = list(title = 'Average Players')
+  )
+
+# Show the plot
+fig
+
+
+```
+### Average Game Player {.no-padding}
+
+```{r}
+
+# Load necessary libraries
+library(plotly)
+library(dplyr)
+library(tidyr)
+library(RColorBrewer)
+
+# Read the data from CSV file
+data <- read.csv("Valve_Player_Data.csv")
+
+# Extract the year from 'Month_Year' column
+data$Year <- as.numeric(substr(data$Month_Year, nchar(data$Month_Year)-3, nchar(data$Month_Year)))
+
+# Group by 'Year' and 'Game_Name' to calculate the mean of 'Avg_players'
+yearly_avg <- data %>%
+  group_by(Year, Game_Name) %>%
+  summarise(Avg_players = mean(Avg_players, na.rm = TRUE)) %>%
+  ungroup()
+
+# Filter the data to keep only the average players within the range of 10k to 20k
+yearly_avg <- yearly_avg %>%
+  filter(Avg_players >= 0 & Avg_players <= 20000)
+
+# Pivot the data to have 'Year' as columns and 'Game_Name' as rows
+pivot_data <- yearly_avg %>%
+  pivot_wider(names_from = Year, values_from = Avg_players, values_fill = list(Avg_players = 0))
+
+# Add a unique identifier for each game
+pivot_data$Game_ID <- seq_len(nrow(pivot_data))
+
+# Create a color palette with a distinct color for each game
+color_palette <- brewer.pal(n = nrow(pivot_data), name = "Set3")
+
+# Create a list of dimensions for the plotly plot
+dimensions <- lapply(names(pivot_data)[-c(1, ncol(pivot_data))], function(year) {
+  list(range = c(0, 20000),
+       label = year, values = pivot_data[[year]])
+})
+
+# Generate the plotly interactive parallel coordinates plot
+fig <- plot_ly(pivot_data, type = 'parcoords', dimensions = dimensions,
+               line = list(color = ~pivot_data$Game_ID,
+                           colorscale = list(c(min(pivot_data$Game_ID), max(pivot_data$Game_ID)), color_palette))
+              ) %>%
+  layout(
+    title = 'Yearly Average Players per Game (10k to 20k range)',
+    xaxis = list(title = 'Year'),
+    yaxis = list(title = 'Average Players')
+  )
+
+# Show the plot
+fig
+
+
+```
+
+
+# Games & Scores
+
+## Column {.tabset .tabset-fade .colored data-width="400"}
+
+### Publisher with Scores {.no-padding}
+
+```{r fig.height=4.55}
+
+data <- read.csv("steam_data.csv", stringsAsFactors = FALSE)
+
+data <- data[!data$Publisher == "", , drop = FALSE]
+
+# Convert to character type
+data$Discounted.Price <- as.character(data$Discounted.Price)
+data$Original.Price <- as.character(data$Original.Price)
+
+# Replace "Free" with 0, and remove the dollar sign
+data$Discounted.Price <- ifelse(data$Discounted.Price == "Free" | is.na(data$Discounted.Price), 0, as.numeric(gsub("[^0-9.]", "", data$Discounted.Price)))
+data$Original.Price <- ifelse(data$Original.Price == "Free" | is.na(data$Original.Price), 0, as.numeric(gsub("[^0-9.]", "", data$Original.Price)))
+
+# Remove rows where Original.Price is 0
+data <- data[data$Original.Price != 0, , drop = FALSE]
+
+# Assuming "Release.Date" is in the format day-month-year, use dmy to convert it to a date object
+data$Release.Date <- dmy(data$Release.Date)
+
+# Extract the year and store it in a new column "year"
+data$year <- year(data$Release.Date)
+
+# review
+data <- mutate(data,
+  Review_Score_Numeric = case_when(
+    All.Reviews.Summary == "Mixed" ~ 0.5,
+    All.Reviews.Summary == "Mostly Negative" ~ 0.25,
+    All.Reviews.Summary == "Mostly Positive" ~ 0.75,
+    All.Reviews.Summary == "Overwhelmingly Negative" ~ 0.1,
+    All.Reviews.Summary == "Overwhelmingly Positive" ~ 0.9,
+    All.Reviews.Summary == "Positive" ~ 0.8,
+    All.Reviews.Summary == "Very Positive" ~ 0.95,
+    All.Reviews.Summary == "" ~ NA_real_, 
+    TRUE ~ NA_real_  
+  )
+)
+
+data <- filter(data, !is.na(Review_Score_Numeric))
+
+# Select game makers that have released games between 2012 and 2019
+selected_publishers <- data %>%
+  filter(year >= 2012, year <= 2019) %>%
+  group_by(Publisher) %>%
+  filter(n_distinct(year) == 8) %>%  
+  pull(Publisher)
+
+
+selected_publishers <- c("SEGA", "Devolver Digital", "Square Enix", "Warner Bros. Interactive Entertainment", "XSEED Games", "THQ Nordic", "Daedalic Entertainment")
+
+# Choose the game from the original data
+selected_games <- data %>%
+  filter(Publisher %in% selected_publishers)%>%
+  filter(year >= 2012, year <= 2019)
+
+
+# Create the plot
+p <- ggplot(selected_games, aes(Review_Score_Numeric, Original.Price, color = Publisher))+
+  geom_point(aes(frame = year, id = Title), size = 5) +
+  scale_x_log10(limits = c(0.4, 1)) 
+
+# Convert ggplot object to plotly
+ggplotly(p)
+
+```
+
+### Impact of Rating {.no-padding}
+
+```{r fig.height=4.65}
+
+selected_publishers1 <- c("Devolver Digital", "Square Enix", "Warner Bros. Interactive Entertainment", "XSEED Games", "THQ Nordic", "Daedalic Entertainment")
+
+selected_games1 <- data %>%
+  filter(Publisher %in% selected_publishers1)%>%
+  filter(year >= 2012, year <= 2019)
+
+selected_games1 <- mutate(selected_games1, Publisher = if_else(Publisher == "Warner Bros. Interactive Entertainment", "Warner", Publisher))
+
+selected_games1 <- selected_games1 %>%
+  group_by(Publisher, year) %>%
+  summarise(Avg_Review_Score = mean(Review_Score_Numeric, na.rm = TRUE), .groups = 'drop')
+
+q <- ggplot(selected_games1, aes(x = year, y = Avg_Review_Score, color = Publisher)) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(aes(y = Avg_Review_Score, x = year), method = "lm", se = FALSE, color = "blue") +
+  facet_wrap(~Publisher) +  
+  labs(title = "Impact of Previous Game Rating on Next Game Expectation",
+       x = "Year",
+       y = "Review Score") +
+  theme_minimal()
+
+ggplotly(q)
+
+```
+
+### Radar without Discount {.no-padding}
+
+```{r fig.height=4.65}
+
+#雷达图
+library(plotly)
+library(dplyr)
+library(readr)
+
+# 假设数据已经读取并存储在 data 变量中
+file_path <- "steam_data.csv"
+data <- read_csv(file_path, locale = locale(encoding = "ISO-8859-1"))
+
+# 将列名中的空格替换为下划线
+names(data) <- gsub(" ", "_", names(data))
+data$Original_Price <- gsub("[$]", "", data$Original_Price)
+data$Discounted_Price <- gsub("[$]", "", data$Discounted_Price)
+data$Original_Price <- ifelse(data$Original_Price == "Free", 0, as.numeric(data$Original_Price))
+data$Discounted_Price <- ifelse(data$Discounted_Price == "Free", 0, as.numeric(data$Discounted_Price))
+
+filtered_data <- data %>%
+  filter(Discounted_Price - Original_Price < 0)
+
+# 统计筛选后的数据中最近评价的分布
+reviews_summary <- filtered_data %>%
+  filter(!Recent_Reviews_Summary %in% c("1 user reviews", "2 user reviews", "3 user reviews",
+                                        "4 user reviews", "5 user reviews", "6 user reviews",
+                                        "7 user reviews", "8 user reviews", "9 user reviews")) %>%
+  count(Recent_Reviews_Summary)
+
+# 为每个评价类别生成等间隔的角度
+n_reviews <- nrow(reviews_summary)
+angles <- seq(0, 360, length.out = n_reviews + 1)[-1]
+reviews_summary$theta <- angles
+
+# 创建雷达图
+fig <- plot_ly(
+  type = 'scatterpolar',
+  fill = 'toself',
+  r = reviews_summary$n,
+  theta = reviews_summary$theta,
+  mode = 'lines+markers',
+  marker = list(size = 10)
+) %>%
+  layout(
+    polar = list(
+      radialaxis = list(range = c(0, max(reviews_summary$n))),
+      angularaxis = list(
+        tickvals = reviews_summary$theta,
+        ticktext = reviews_summary$Recent_Reviews_Summary
+      )
+    ),
+    title = "Radar Chart of Recent Reviews for Games Without Discount"
+  )
+
+# 显示图表
+fig
+
+```
+
+### Radar with Discount {.no-padding}
+
+```{r}
+library(plotly)
+library(dplyr)
+library(readr)
+
+# 假设数据已经读取并存储在 data 变量中
+file_path <- "steam_data.csv"
+data <- read_csv(file_path, locale = locale(encoding = "ISO-8859-1"))
+
+# 将列名中的空格替换为下划线
+names(data) <- gsub(" ", "_", names(data))
+data$Original_Price <- gsub("[$]", "", data$Original_Price)
+data$Discounted_Price <- gsub("[$]", "", data$Discounted_Price)
+data$Original_Price <- ifelse(data$Original_Price == "Free", 0, as.numeric(data$Original_Price))
+data$Discounted_Price <- ifelse(data$Discounted_Price == "Free", 0, as.numeric(data$Discounted_Price))
+
+filtered_data <- data %>%
+  filter(Discounted_Price - Original_Price == 0)
+
+# 统计筛选后的数据中最近评价的分布
+reviews_summary <- filtered_data %>%
+  filter(!Recent_Reviews_Summary %in% c("1 user reviews", "2 user reviews", "3 user reviews",
+                                        "4 user reviews", "5 user reviews", "6 user reviews",
+                                        "7 user reviews", "8 user reviews", "9 user reviews")) %>%
+  count(Recent_Reviews_Summary)
+
+# 为每个评价类别生成等间隔的角度
+n_reviews <- nrow(reviews_summary)
+angles <- seq(0, 360, length.out = n_reviews + 1)[-1]
+reviews_summary$theta <- angles
+
+# 创建雷达图
+fig <- plot_ly(
+  type = 'scatterpolar',
+  fill = 'toself',
+  r = reviews_summary$n,
+  theta = reviews_summary$theta,
+  mode = 'lines+markers',
+  marker = list(size = 10)
+) %>%
+  layout(
+    polar = list(
+      radialaxis = list(range = c(0, max(reviews_summary$n))),
+      angularaxis = list(
+        tickvals = reviews_summary$theta,
+        ticktext = reviews_summary$Recent_Reviews_Summary
+      )
+    ),
+    title = "Radar Chart of Recent Reviews for Games Without Discount"
+  )
+
+# 显示图表
+fig
+
+
+```
+
+
+## Column {.tabset .tabset-fade .colored data-width="400"}
+
+### Tree Map Recommandation {.no-title .no-padding .colored}
+
+```{r fig.height=4.9}
+
+data <- read.csv('games-features-edit.csv')
+sorted_data <- data %>%
+  arrange(desc(RecommendationCount)) %>%
+  head(150)
+
+fig <- plot_ly(sorted_data,
+               type = "treemap",
+               labels = ~ResponseName,
+               parents = '', # 如果没有明确的父级关系，请设置为空字符串
+               values = ~RecommendationCount,
+               textinfo = "label+value+percent entry",
+               marker = list(
+                 colors = ~Metacritic,
+                 colorscale = 'RdBu'
+               )
+) %>%
+layout(title = "Game Recommandation")
+
+# 显示图形
+fig
+
+```
+
+### Game Feature Ratings {.no-title .no-padding .colored}
+
+```{r}
+library(readr)
+library(plotly)
+
+file_path <- "steam_data.csv" # 确保这是您文件的正确路径
+# 使用适当的编码读取数据
+data <- read_csv(file_path, locale = locale(encoding = "ISO-8859-1"))
+
+# 将列名中的空格替换为下划线
+names(data) <- gsub(" ", "_", names(data))
+
+
+
+# 选取评论为“Mostly Positive”的游戏
+mostly_positive_games <- data[data$All_Reviews_Summary == "Overwhelmingly Positive", ]
+
+# 统计各个公司的数量
+publisher_counts <- table(mostly_positive_games$Publisher)
+
+# 将统计结果转换为数据框
+publisher_data <- data.frame(Publisher = names(publisher_counts), count = as.numeric(publisher_counts))
+
+# 创建一个颜色映射，颜色随计数变化而变化
+color_scale <- scale_colour_gradient(low = "darkblue", high = "lightblue")
+
+# 使用 plotly 创建 Bubble Chart
+fig <- plot_ly(data = publisher_data, x = ~Publisher, y = ~count, size = ~count,
+               text = ~paste("Publisher: ", Publisher, "<br>Count: ", count),
+               type = 'scatter', mode = 'markers',
+               marker = list(color = ~count, colorscale = 'Blues', opacity = 0.7, sizemode = 'diameter')) %>%
+  layout(title = "Publishers of Overwhelmingly Positive Games",
+         xaxis = list(title = "Publisher"),
+         yaxis = list(title = "Count"),
+         hoverlabel = list(bgcolor = "white", font = list(family = "Arial", size = 12, color = "black")))
+
+# 显示图表
+fig
+
+```
+
+
+# Marketing Analysis 1 {data-navmenu="Marketing Analysis"}
+
+## Column {.tabset .tabset-fade .colored data-width="400"}
+
+### Sales-Scores by Genre {.no-padding}
+
+```{r fig.height=4.9}
+
+library(ggplot2)
+library(readr)
+library(dplyr)
+library(RColorBrewer)
+# Load the dataset
+df <- read_csv("Video_Games.csv")
+
+colors <- brewer.pal(length(unique(df$Genre)), "Set1")
+# Create the scatter plot
+fig <- plot_ly(data = df, x = ~Global_Sales, y = ~Critic_Score, 
+               type = 'scatter', mode = 'markers',
+               text = ~Name, hoverinfo = 'text',
+               color = ~Genre, colors = colors)
+
+fig <- fig %>% layout(title = 'Global Sales vs. Critic Scores by Genre')
+
+# Show the plot
+fig
+
+```
+
+### Relationship {.no-padding}
+
+```{r fig.height=4.9}
+library(ggplot2)
+library(readr)
+library(dplyr)
+library(RColorBrewer)
+df <- read_csv("Video_Games.csv")
+
+fig <- plot_ly(data = df, x = ~Critic_Score, y = ~Global_Sales, size = ~EU_Sales,
+               color = ~Genre, hoverinfo = 'text', text = ~Name) %>%
+  layout(title = 'Relationship between Critic Scores, Global Sales, and Genre') %>%
+  colorbar(title = "Genre")
+
+# 显示图形
+fig
+
+```
+
+## Column {.tabset .tabset-fade .colored data-width="400"}
+
+### Proportion {.no-padding}
+
+```{r fig.height=4.65}
+library(plotly)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(dplyr)
+library(RColorBrewer)
+platform_sales <- df %>%
+  group_by(Platform) %>%
+  summarize(Total_Sales = sum(Global_Sales, na.rm = TRUE))
+
+# Create the pie chart using plotly
+fig <- plot_ly(platform_sales, labels = ~Platform, values = ~Total_Sales, type = 'pie') %>%
+      layout(title = 'Proportion of Total Sales by Platform')
+
+# Show the plot
+fig
+```
+
+### Correlation Heatmap {.no-padding}
+
+```{r fig.height=4.65}
+library(plotly)
+library(readr)
+library(dplyr)
+# Select only numeric columns for the correlation matrix
+numeric_columns <- df[, c("NA_Sales", "EU_Sales", "JP_Sales", "Other_Sales", "Global_Sales", "Critic_Score")]
+
+# Calculate the correlation matrix
+cor_mat <- cor(numeric_columns, use = "complete.obs")
+
+# Create the heatmap using plotly
+fig <- plot_ly(x = colnames(cor_mat), y = rownames(cor_mat), z = cor_mat, type = "heatmap",
+               colorscale = 'RdBu') %>%
+      layout(title = 'Correlation Heatmap for Video Game Sales Data')
+
+# Show the plot
+fig
+
+```
+
+# Marketing Analysis 2 {data-navmenu="Marketing Analysis"}
+
+```{r fig.height=6.25}
+df <- read_csv("Video_Games.csv")
+df <- df %>%
+   group_by(Publisher) %>%
+   filter(n() > 50) # Set a threshold for the minimum number of games per publisher
+
+# Create the box plot
+fig <- plot_ly(data = df, x = ~Publisher, y = ~Critic_Score, 
+               type = 'box', 
+               color = ~Platform, 
+               hoverinfo = 'text', text = ~Name) %>%
+  layout(title = 'Distribution of Critic Scores by Publisher and Platform',
+         xaxis = list(title = 'Publisher', tickangle = 45),  # Rotate x-axis labels for better readability
+         yaxis = list(title = 'Critic Score'),
+         hovermode = 'closest', # Optimizes hover interaction
+         boxmode = 'group') %>% # Groups boxes of the same category together
+  config(displayModeBar = FALSE) # Optionally, hide the mode bar
+
+fig <- fig %>% layout(
+  boxgap = 0.5, # 间隙大小，范围从0到1，0表示没有间隙，1表示箱形图宽度的间隙
+  boxgroupgap = 0.2 # 同一组内的间隙大小，范围同上
+)
+
+# Show the plot
+fig
+
+```
+
+# Marketing Analysis 3 {data-navmenu="Marketing Analysis"}
+
+```{r fig.height=6.25}
+library(shiny)
+library(plotly)
+library(readr)
+library(dplyr)
+library(hexbin)
+
+# Load the dataset
+df_for_hexbin <- read_csv("Video_Games.csv")
+
+# 选择你想要在hexbin图中使用的数值型列
+numeric_vars <- c("Year_of_Release", "NA_Sales", "EU_Sales", "JP_Sales", "Other_Sales", "Global_Sales", "Critic_Score", "Critic_Count", "User_Count")
+df_for_hexbin <- df_for_hexbin %>%
+  select(all_of(numeric_vars)) %>%
+  na.omit()
+
+# 定义UI
+ui <- fluidPage(
+  titlePanel("Hexbin map"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("xvar", "Choose X", choices = numeric_vars),
+      selectInput("yvar", "Choose Y", choices = numeric_vars)
+    ),
+    mainPanel(
+      plotlyOutput("hexbinPlot")
+    )
+  )
+)
+
+# 定义server逻辑
+server <- function(input, output) {
+  output$hexbinPlot <- renderPlotly({
+    # 使用输入创建基础的六边形统计图
+    p <- ggplot(df_for_hexbin, aes_string(x = input$xvar, y = input$yvar)) +
+    stat_binhex(bins = 30) +
+    scale_fill_gradient(low = "blue", high = "red") +
+    labs(title = "Hexbin Map", x = input$xvar, y = input$yvar) +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))  # 
+    # 将ggplot图转换为plotly对象
+    ggplotly(p)
+  })
+}
+
+# 运行shiny应用程序
+shinyApp(ui, server)
+
+```
+
+# Marketing Analysis 4 {data-navmenu="Marketing Analysis"}
+
+```{r fig.height=6.25}
+
+
+library(plotly)
+library(readr)
+library(dplyr)
+
+
+vgsales  <-  read_csv("vgsales.csv") 
+# Assuming vgsales is your dataframe
+df <- vgsales[1:100, ]
+
+# Creating the plot
+fig <- plot_ly(data = df, x = ~Rank, y = ~NA_Sales, type = 'scatter', mode = 'markers',
+               name = 'North America', marker = list(color = 'rgba(28, 149, 249, 0.8)', size = 8),
+               text = ~Name)
+
+fig <- fig %>% add_trace(x = ~Rank, y = ~EU_Sales, mode = 'markers',
+                         name = 'Europe', marker = list(color = 'rgba(249, 94, 28, 0.8)', size = 8),
+                         text = ~Name)
+
+fig <- fig %>% add_trace(x = ~Rank, y = ~JP_Sales, mode = 'markers',
+                         name = 'Japan', marker = list(color = 'rgba(150, 26, 80, 0.8)', size = 8),
+                         text = ~Name)
+
+fig <- fig %>% add_trace(x = ~Rank, y = ~Other_Sales, mode = 'markers',
+                         name = 'Other', marker = list(color = 'lime', size = 8),
+                         text = ~Name)
+
+# Setting layout
+fig <- fig %>% layout(title = 'North America, Europe, Japan and Other Sales of Top 100 Video Games',
+                      xaxis = list(title = 'Rank', ticklen = 5, zeroline = FALSE),
+                      yaxis = list(title = 'Sales (In Millions)', ticklen = 5, zeroline = FALSE),
+                      paper_bgcolor = 'rgb(243, 243, 243)',
+                      plot_bgcolor = 'rgb(243, 243, 243)')
+
+fig
+
+```
+
+# Marketing Analysis 5 {data-navmenu="Marketing Analysis"}
+
+## Column {data-width="600"}
+
+### Top 100 Games Sales {.no-padding}
+
+```{r fig.height=6.25}
+
+vgsales  <-  read_csv("vgsales.csv") 
+df <- vgsales[1:100, ]
+
+# Creating the plot
+fig <- plot_ly(data = df, x = ~Rank, y = ~Year, type = 'scatter', mode = 'markers',
+               marker = list(color = ~Global_Sales, size = ~Global_Sales, showscale = TRUE, colorscale = 'Blackbody'),
+               text = ~paste("Name:", Name, "Publisher:", Publisher))
+
+# Setting layout
+fig <- fig %>% layout(title = 'Release Years of Top 100 Video Games According to Global Sales',
+                      xaxis = list(title = 'Rank', gridcolor = 'rgb(255, 255, 255)', zerolinewidth = 1, ticklen = 5, gridwidth = 2),
+                      yaxis = list(title = 'Years', gridcolor = 'rgb(255, 255, 255)', zerolinewidth = 1, ticklen = 5, gridwidth = 2),
+                      paper_bgcolor = 'rgb(243, 243, 243)',
+                      plot_bgcolor = 'rgb(243, 243, 243)')
+
+fig
+
+
+```
+
+## Column {data-width="600"}
+
+### Top 100 Games Sales {data-width="600"}
+```{r}
+
+library(plotly)
+library(readr)
+library(dplyr)
+
+# Read the dataset
+vgsales <- read_csv("vgsales.csv")
+
+# Prepare the data
+df <- vgsales %>%
+  slice(1:100) %>%
+  select(Year, Platform, NA_Sales, EU_Sales) %>%
+  mutate(
+    Year = as.numeric(Year),
+    Platform = as.factor(Platform),
+    index = row_number()
+  )
+
+# Remove rows with NAs in Year
+df <- na.omit(df)
+
+# Plot matrix setup
+p <- list()
+n <- length(df)
+vars <- c("Year", "Platform", "NA_Sales", "EU_Sales")
+
+# Generate the plots
+for (i in vars) {
+  for (j in vars) {
+    plot_name <- paste(i, j, sep = "_")
+    if (i == j) {
+      # Diagonal plots are boxplots
+      p[[plot_name]] <- plot_ly(df, y = as.formula(paste0("~`", i, "`")), name = i, type = "box") %>%
+        layout(showlegend = FALSE, hoverinfo = "y")
+    } else {
+      # Off-diagonal plots are scatterplots
+      p[[plot_name]] <- plot_ly(df, x = as.formula(paste0("~`", i, "`")), y = as.formula(paste0("~`", j, "`")), name = paste(i, j), type = "scatter", mode = "markers", marker = list(size = 10)) %>%
+        layout(showlegend = FALSE, hoverinfo = "text+x+y", text = ~paste(df$index))
+    }
+  }
+}
+
+# Create the subplot matrix
+fig <- subplot(
+  p[["Year_Year"]], p[["Year_Platform"]], p[["Year_NA_Sales"]], p[["Year_EU_Sales"]],
+  p[["Platform_Year"]], p[["Platform_Platform"]], p[["Platform_NA_Sales"]], p[["Platform_EU_Sales"]],
+  p[["NA_Sales_Year"]], p[["NA_Sales_Platform"]], p[["NA_Sales_NA_Sales"]], p[["NA_Sales_EU_Sales"]],
+  p[["EU_Sales_Year"]], p[["EU_Sales_Platform"]], p[["EU_Sales_NA_Sales"]], p[["EU_Sales_EU_Sales"]],
+  nrows = 4, shareX = FALSE, shareY = FALSE, titleX = FALSE, titleY = FALSE
+) %>%
+layout(title = "Scatterplot Matrix")
+
+# Print the plot
+fig
+
+```
+
+
+# Word Cloud
+
+## Column {.tabset .tabset-fade .colored data-width="400"}
+
+### Game Description {.no-padding}
+
+```{r fig.height=4.55}
+
+library(tm)
+library(wordcloud)
+library(dplyr)
+
+# 假设您的数据已经被读取到变量steam_data中
+# 假设Game.Description列包含您想要生成词云的文本
+
+# 清理文本数据
+clean_corpus <- function(corpus) {
+  corpus <- tm_map(corpus, content_transformer(tolower))
+  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, removeNumbers)
+  corpus <- tm_map(corpus, removeWords, stopwords("en"))
+  return(corpus)
+}
+
+# 创建一个文本语料库
+corpus <- Corpus(VectorSource(steam_data$Game.Description))
+corpus <- clean_corpus(corpus)
+
+# 生成词云
+wordcloud(words = corpus, scale=c(5,0.5), max.words=100, random.order=FALSE, rot.per=0.35, use.r.layout=FALSE, colors=brewer.pal(8, "Dark2"))
+
+```
+
+
+## Column {.tabset .tabset-fade .colored data-width="400"}
+
+### System 2D {.no-padding}
+
+```{r fig.height=4.9}
+
+library(plotly)
+library(tm)
+library(SnowballC)
+library(dplyr)
+
+library(tm)
+library(wordcloud)
+library(dplyr)
+
+# 假设您的数据已经被读取到变量steam_data中
+# 假设Game.Description列包含您想要生成词云的文本
+
+# 清理文本数据
+clean_corpus <- function(corpus) {
+  corpus <- tm_map(corpus, content_transformer(tolower))
+  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, removeNumbers)
+  corpus <- tm_map(corpus, removeWords, stopwords("en"))
+  return(corpus)
+}
+
+# 创建一个文本语料库
+corpus <- Corpus(VectorSource(steam_data$Minimum.Requirements))
+corpus <- clean_corpus(corpus)
+
+# 生成词云
+wordcloud(words = corpus, scale=c(3,0.5), max.words=200, random.order=FALSE, rot.per=0.35, use.r.layout=FALSE, colors=brewer.pal(8, "Dark2"))
+
+```
+
+### System 3D 1 {.no-padding}
+
+```{r fig.height=4.9}
+library(plotly)
+library(tm)
+library(SnowballC)
+library(dplyr)
+library(RColorBrewer)
+
+# 假设您的数据已经被读取到变量steam_data中
+# 现在我们将使用Minimum.Requirements列
+
+# 清理文本数据的函数
+clean_corpus <- function(corpus) {
+  corpus <- tm_map(corpus, content_transformer(tolower))
+  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, removeNumbers)
+  corpus <- tm_map(corpus, removeWords, stopwords("en"))
+  corpus <- tm_map(corpus, stemDocument)
+  return(corpus)
+}
+
+# 创建一个文本语料库
+corpus <- Corpus(VectorSource(steam_data$Minimum.Requirements))
+corpus <- clean_corpus(corpus)
+
+# 创建词频表
+dtm <- TermDocumentMatrix(corpus)
+matrix <- as.matrix(dtm)
+words <- sort(rowSums(matrix), decreasing = TRUE)
+word_freq <- data.frame(word = names(words), freq = words)
+
+# 对频率进行0-1归一化
+word_freq$normalized_freq <- (word_freq$freq - min(word_freq$freq)) / (max(word_freq$freq) - min(word_freq$freq))
+
+# 选取频率最高的100个词
+top_words <- head(word_freq, 100)
+
+# 为3D词云准备数据
+set.seed(1234)
+random_colors <- grDevices::rainbow(nrow(top_words))
+top_words$color <- random_colors
+top_words$x <- rnorm(nrow(top_words))
+top_words$y <- rnorm(nrow(top_words))
+top_words$z <- rnorm(nrow(top_words))
+
+# 创建3D词云
+plot_ly(data = top_words, x = ~x, y = ~y, z = ~z, text = ~word, 
+        marker = list(color = ~color, size = ~normalized_freq * 30), type = "scatter3d", mode = "text") %>%
+  layout(scene = list(xaxis = list(title = 'X-axis'),
+                      yaxis = list(title = 'Y-axis'),
+                      zaxis = list(title = 'Z-axis')))
+
+```
+
+### System 3D 2 {.no-padding}
+```{r}
+# 对频率进行0-1归一化
+word_freq$normalized_freq <- (word_freq$freq - min(word_freq$freq)) / (max(word_freq$freq) - min(word_freq$freq))
+
+# 选取频率最高的100个词
+top_words <- head(word_freq, 100)
+
+# 计算每个词的位置
+# 使用归一化的词频来确定坐标，使得高频词更靠近中心
+top_words$x <- sqrt(top_words$normalized_freq) * cos(seq(0, 2*pi, length.out = nrow(top_words)))
+top_words$y <- sqrt(top_words$normalized_freq) * sin(seq(0, 2*pi, length.out = nrow(top_words)))
+top_words$z <- sqrt(top_words$normalized_freq)
+
+# 设置颜色和大小
+random_colors <- grDevices::rainbow(nrow(top_words))
+top_words$color <- random_colors
+top_words$size <- top_words$normalized_freq * 30 # 根据需要调整大小系数
+
+# 创建3D词云
+plot_ly(data = top_words, x = ~x, y = ~y, z = ~z, text = ~word, 
+        marker = list(color = ~color, size = ~size), type = "scatter3d", mode = "text") %>%
+  layout(scene = list(xaxis = list(title = 'X-axis'),
+                      yaxis = list(title = 'Y-axis'),
+                      zaxis = list(title = 'Z-axis')))
+
+```
+
+# Search {data-icon="fa-search"}
+
+## Column {data-width="250"}
+
+### Filters {.no-title .colored}
+
+
+**Data table**
+
+```{r}
+
+data <- read.csv("vgsales.csv") 
+
+datatable(data,
+          caption = "Game Data",
+          rownames = T,
+          filter = "top",
+          options = list(pageLength = 25))
+
+```
+
+
+
+# About {data-icon="fa-info-circle"}
+
+## Column {data-width="600"}
+
+###  {.colored}
+
+According to the latest market research, although the global economy has been affected by the impact of the COVID-19 epidemic and unstable factors such as geopolitical tensions in various regions in recent years, the overall economic situation has shown a complex and volatile trend. At the same time, however, the video game market has shown strong growth. According to Grand View Research, the global video game market was valued at USD 217.06 billion in 2022 and is expected to grow at a CAGR of 13.4% from 2023 to 2030. Moreover, Newzoo data shows that the number of video game players globally was 3.22 billion in 2023 and is expected to increase to 3.32 billion by 2024. These figures indicate that the video game market continues to grow strongly despite the challenges of the global economy. As active gamers and data scientists, we hope to be able to explore the true dynamics of the current gaming market through in-depth analyses of real gaming data.
+
+The data on the Steam platform and console platforms will gain a deeper understanding of the comprehensive features and trends of the gaming market. Steam, as one of the world's largest digital distribution platforms, and console platforms such as Xbox, PlayStation, and Nintendo represent key components of the gaming industry. The game libraries of these platforms are not only large but also diverse, providing a rich data resource for our study.
+
+The core of this project lies in the use of data visualisation techniques to convert this complex data into intuitive, easy-to-understand visual information. We will use charts and graphs to show the dynamic changes and characteristics of the game market on different platforms. Such analyses will not only help to gain an in-depth understanding of the game market on Steam and console platforms, but also reveal the interrelationships and uniqueness between different platforms. This project also aims to explore how to improve user experience and data presentation through data visualisation. We hope to provide game developers, market analysts, and gamers with a comprehensive and in-depth perspective to better understand and evaluate changes in the digital gaming landscape.
