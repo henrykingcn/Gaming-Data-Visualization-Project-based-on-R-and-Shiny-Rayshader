@@ -1,0 +1,226 @@
+---
+title: "3D"
+output: html_document
+date: "2023-12-10"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(rayshader)
+library(scales)
+# 读取数据
+data <- read.csv("steam.csv")
+
+# 替换列名中的空格为点
+names(data) <- gsub(" ", ".", names(data))
+
+# 处理价格数据
+# 将“Free”替换为0，并移除美元符号
+data$Original.Price <- gsub("\\$", "", data$Original.Price)
+data$Original.Price[data$Original.Price == "Free"] <- "0"
+
+# 将价格转换为数值型
+data$Original.Price <- as.numeric(data$Original.Price)
+
+data <- na.omit(data)
+# 计算每个游戏的标签数量
+data$Tag.Count <- sapply(strsplit(gsub("[\\[\\]]", "", data$Popular.Tags), ", "), length)
+
+data <- data[(data$Original.Price < 100 )& (data$Original.Price > 10) & (data$Tag.Count > 1),]
+# 保留游戏名称、标签数量和价格
+result <- data %>% select(Tag.Count, Original.Price)
+
+result$Original.Price <- as.numeric(as.character(result$Original.Price))
+result$Tag.Count <- as.numeric(result$Tag.Count)
+
+# 移除包含NA的行
+result <- na.omit(result)
+
+#View(result)
+
+h <- ggplot(result, aes(x = Tag.Count, y = Original.Price)) + 
+    geom_hex(bins = 20, color = "black") +
+  scale_y_continuous(labels = dollar_format(prefix = "$")) +
+    theme_minimal() +
+    xlab("TagNumber") + 
+    ylab("Price") +
+  scale_fill_gradientn(colors = c("purple", "blue", "cyan","green","yellow","orange", "red"), values = scales::rescale(c(0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 0.9)))+
+  ggtitle("Price with Tags Counts")
+
+rayshader_map <- h %>% 
+  plot_gg(windowed = FALSE, width = 5, height = 5, multicore = TRUE, scale = 250)
+
+```
+
+```{r}
+library(dplyr)
+library(scales)
+library(ggplot2)
+# 读取数据
+data <- read.csv('steam.csv')
+
+names(data) <- gsub(" ", ".", names(data))
+# 转换发行日期为标准时间格式，并提取年份
+Sys.setlocale("LC_TIME", "English")
+data$Release.Date <- as.Date(data$Release.Date, format = '%d %b, %Y')
+data$Release.Year <- format(data$Release.Date, '%Y')
+
+#View(data)
+# 处理价格数据：将“Free”替换为0，并移除美元符号
+data$Original.Price <- gsub('\\$', '', data$Original.Price)
+data$Original.Price <- gsub('Free', '0', data$Original.Price)
+data$Original.Price <- as.numeric(data$Original.Price)
+
+data <- na.omit(data)
+
+data <- data[(data$Original.Price < 100 ) & (data$Original.Price > 10),]
+
+#View(data)
+# 保留价格和年份
+result <- data %>% select(Original.Price, Release.Year)
+
+result$Original.Price <- as.numeric(as.character(result$Original.Price))
+result$Release.Year <- as.numeric(result$Release.Year)
+
+# 移除包含NA的行
+result[result == ""] <- NA
+result <- na.omit(result)
+#View(result)
+
+h <- ggplot(result, aes(x = Release.Year, y = Original.Price)) + 
+    geom_hex(bins = 20, color = "black") +
+  scale_y_continuous(labels = dollar_format(prefix = "$"))+
+    theme_minimal() +
+    xlab("Year") + 
+    ylab("Price") +
+  scale_fill_gradientn(colors = c("purple", "blue", "cyan","green","yellow","orange", "red"), values = scales::rescale(c(0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 0.9)))+
+  ggtitle("Price with Year")
+
+
+rayshader_map <- h %>% 
+  plot_gg(windowed = FALSE, width = 5, height = 5, multicore = TRUE, scale = 250)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# 读取数据
+data <- read.csv('steam.csv')
+
+names(data) <- gsub(" ", ".", names(data))
+data$Publisher <- gsub("[^A-Za-z0-9]", "", data$Publisher)
+data$Original.Price <- gsub('\\$', '', data$Original.Price)
+data$Original.Price <- gsub('Free', '0', data$Original.Price)
+#View(data)
+# 计算每个游戏厂商发布的游戏总数量
+publisher_counts <- data %>% 
+                    group_by(Publisher) %>%
+                    summarize(Total.Games = n()) %>%
+                    arrange(desc(Total.Games))
+
+publisher_counts$Total.Games <- as.numeric(as.character(publisher_counts$Total.Games))
+publisher_counts[publisher_counts == ""] <- NA
+publisher_counts <- na.omit(publisher_counts)
+publisher_counts <- publisher_counts[publisher_counts$Total.Games >= 10,]
+
+#View(publisher_counts)
+data <- merge(data, publisher_counts, by = "Publisher")
+result <- data %>% select(Original.Price, Total.Games)
+result$Original.Price <- as.numeric(as.character(result$Original.Price))
+result <- na.omit(result)
+
+result <- result[(result$Original.Price < 100) & (result$Original.Price > 10),]
+#View(result)
+
+h <- ggplot(result, aes(x = Total.Games, y = Original.Price)) + 
+    geom_hex(bins = 20, color = "black") +
+  scale_y_continuous(labels = dollar_format(prefix = "$"))+
+    theme_minimal() +
+    xlab("TotalGames") + 
+    ylab("Price") +
+  scale_fill_gradientn(colors = c("purple", "blue", "cyan","green","yellow","orange", "red"), values = scales::rescale(c(0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 0.9)))+
+  ggtitle("Price with Number of Games Release by Different Publishers")
+
+rayshader_map <- h %>% 
+ plot_gg(width = 5, height = 5, multicore = TRUE, scale = 250)
+```
+
+```{r}
+library(dplyr)
+library(scales)
+library(ggplot2)
+# 读取数据
+data <- read.csv('steam.csv')
+
+names(data) <- gsub(" ", ".", names(data))
+# 转换发行日期为标准时间格式，并提取年份
+Sys.setlocale("LC_TIME", "English")
+data$Release.Date <- as.Date(data$Release.Date, format = '%d %b, %Y')
+data$Release.Year <- format(data$Release.Date, '%Y')
+data$Publisher <- gsub("[^A-Za-z0-9]", "", data$Publisher)
+publisher_counts <- data %>% 
+                    group_by(Publisher, Release.Year) %>%
+                    summarize(Total.Games = n()) %>%
+                    arrange(desc(Total.Games))
+
+publisher_counts$Total.Games <- as.numeric(as.character(publisher_counts$Total.Games))
+publisher_counts[publisher_counts == ""] <- NA
+publisher_counts <- na.omit(publisher_counts)
+result <- publisher_counts[(publisher_counts$Release.Year <= 2023 ) & (publisher_counts$Total.Games >= 10) & (publisher_counts$Release.Year >= 2013),]
+
+top_Publisher <- result %>%
+  group_by(Publisher) %>%
+  summarize(Total = sum(Total.Games)) %>%
+  arrange(desc(Total)) %>%
+  slice(1:20) %>%
+  pull(Publisher)
+
+result_top <- result %>%
+  filter(Publisher %in% top_Publisher)
+
+#View(result_top)
+
+library(ggplot2)
+
+# 使用ggplot2创建热图
+p <- ggplot(result_top, aes(x = Release.Year, y = Publisher, fill = Total.Games)) +
+  geom_tile() + # 创建热图
+  scale_fill_gradientn(colors = c("purple", "blue", "cyan","green","yellow","orange", "red"), values = scales::rescale(c(0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 0.9))) + # 设置颜色渐变
+  labs(title = "Number of Games Published by Each Publisher Each Year",
+       x = "Release Year",
+       y = "Publisher",
+       fill = "Total Games") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = -45, hjust = 0)) # 调整X轴标签角度
+
+# 显示图表
+
+rayshader_map <- p %>% 
+  plot_gg(windowed = T, width = 5, height = 5, multicore = TRUE, scale = 250)
+```
