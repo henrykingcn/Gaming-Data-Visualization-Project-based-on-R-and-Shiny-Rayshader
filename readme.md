@@ -1,5 +1,6 @@
 
 # COMP3023 DV Group Project
+# Virtual Wave Unveiling the Gaming World
 
 ## Author Information
 
